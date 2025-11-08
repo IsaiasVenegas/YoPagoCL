@@ -1,0 +1,194 @@
+import React, { useState } from 'react';
+import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+  Box,
+  VStack,
+  HStack,
+  Input,
+  InputField,
+  InputIcon,
+  InputSlot,
+  Button,
+  ButtonText,
+  Text,
+  Heading,
+  Alert,
+  AlertText,
+  Spinner,
+} from '@/components/ui';
+import { apiService, setAuthToken } from '@/services/api';
+
+type StatusType = 'idle' | 'loading' | 'success' | 'error';
+
+export default function LoginScreen() {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [status, setStatus] = useState<StatusType>('idle');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleTogglePassword = () => {
+    setShowPassword((showState) => !showState);
+  };
+
+  const validateForm = (): string | null => {
+    if (!formData.email.trim()) {
+      return 'Email is required';
+    }
+    if (!formData.email.includes('@')) {
+      return 'Please enter a valid email address';
+    }
+    if (!formData.password) {
+      return 'Password is required';
+    }
+    return null;
+  };
+
+  const handleLogin = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setStatus('error');
+      setStatusMessage(validationError);
+      return;
+    }
+
+    setStatus('loading');
+    setStatusMessage('');
+
+    try {
+      const response = await apiService.login({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      setAuthToken(response.access_token);
+      setStatus('success');
+      setStatusMessage('Login successful! Redirecting...');
+
+      // Redirect to home after a short delay
+      setTimeout(() => {
+        router.replace('/home');
+      }, 1500);
+    } catch (error: any) {
+      setStatus('error');
+      setStatusMessage(error.message || 'Login failed. Please check your credentials.');
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      className="flex-1"
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Box className="flex-1 bg-background-0 p-6">
+          <VStack space="lg" className="flex-1 justify-center">
+            <VStack space="md" className="mb-8 items-center">
+              <Image
+                source={require('@/assets/images/logo.png')}
+                style={{ width: 150, height: 150 }}
+                contentFit="contain"
+              />
+              <Heading size="2xl" className="text-typography-900">
+                Welcome Back
+              </Heading>
+              <Text className="text-typography-600">
+                Sign in to continue to YoPagoCL
+              </Text>
+            </VStack>
+
+            {status === 'error' && (
+              <Alert action="error" variant="solid">
+                <AlertText>{statusMessage}</AlertText>
+              </Alert>
+            )}
+
+            {status === 'success' && (
+              <Alert action="success" variant="solid">
+                <AlertText>{statusMessage}</AlertText>
+              </Alert>
+            )}
+
+            <VStack space="md">
+              <VStack space="xs">
+                <Text className="text-typography-700 font-medium">Email</Text>
+                <Input>
+                  <InputField
+                    placeholder="Enter your email"
+                    value={formData.email}
+                    onChangeText={(text) =>
+                      setFormData({ ...formData, email: text })
+                    }
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </Input>
+              </VStack>
+
+              <VStack space="xs">
+                <Text className="text-typography-700 font-medium">Password</Text>
+                <Input>
+                  <InputField
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChangeText={(text) =>
+                      setFormData({ ...formData, password: text })
+                    }
+                    secureTextEntry={!showPassword}
+                  />
+                  <InputSlot className="pr-3" onPress={handleTogglePassword}>
+                    <InputIcon
+                      as={MaterialCommunityIcons}
+                      name={showPassword ? 'eye' : 'eye-off'}
+                    />
+                  </InputSlot>
+                </Input>
+              </VStack>
+
+              <Button
+                onPress={handleLogin}
+                disabled={status === 'loading'}
+                action="primary"
+                variant="solid"
+                size="lg"
+                className="mt-4"
+              >
+                {status === 'loading' ? (
+                  <HStack space="sm" className="items-center">
+                    <Spinner size="small" color="white" />
+                    <ButtonText>Logging in...</ButtonText>
+                  </HStack>
+                ) : (
+                  <ButtonText>Login</ButtonText>
+                )}
+              </Button>
+
+              <HStack space="sm" className="justify-center items-center mt-4">
+                <Text className="text-typography-600">Don't have an account?</Text>
+                <Button
+                  variant="link"
+                  onPress={() => router.replace('/register')}
+                  className="p-0"
+                >
+                  <ButtonText className="text-primary-500">Register</ButtonText>
+                </Button>
+              </HStack>
+            </VStack>
+          </VStack>
+        </Box>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+

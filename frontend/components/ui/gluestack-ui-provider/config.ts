@@ -3,18 +3,19 @@ import { vars } from 'nativewind';
 
 export const config = {
   light: vars({
-    '--color-primary-0': '179 179 179',
-    '--color-primary-50': '153 153 153',
-    '--color-primary-100': '128 128 128',
-    '--color-primary-200': '115 115 115',
-    '--color-primary-300': '102 102 102',
-    '--color-primary-400': '82 82 82',
-    '--color-primary-500': '51 51 51',
-    '--color-primary-600': '41 41 41',
-    '--color-primary-700': '31 31 31',
-    '--color-primary-800': '13 13 13',
-    '--color-primary-900': '10 10 10',
-    '--color-primary-950': '8 8 8',
+    // Primary color palette based on #8C52FF (140, 82, 255)
+    '--color-primary-0': '250 247 255',
+    '--color-primary-50': '245 240 255',
+    '--color-primary-100': '235 225 255',
+    '--color-primary-200': '220 200 255',
+    '--color-primary-300': '200 170 255',
+    '--color-primary-400': '170 130 255',
+    '--color-primary-500': '140 82 255',  // #8C52FF - main color
+    '--color-primary-600': '120 70 230',
+    '--color-primary-700': '100 58 200',
+    '--color-primary-800': '80 46 170',
+    '--color-primary-900': '60 35 140',
+    '--color-primary-950': '40 23 100',
 
     /* Secondary  */
     '--color-secondary-0': '253 253 253',
@@ -128,19 +129,19 @@ export const config = {
     '--color-outline-900': '39 38 36',
     '--color-outline-950': '26 23 23',
 
-    /* Background */
-    '--color-background-0': '255 255 255',
-    '--color-background-50': '246 246 246',
-    '--color-background-100': '242 241 241',
-    '--color-background-200': '220 219 219',
-    '--color-background-300': '213 212 212',
-    '--color-background-400': '162 163 163',
-    '--color-background-500': '142 142 142',
-    '--color-background-600': '116 116 116',
-    '--color-background-700': '83 82 82',
-    '--color-background-800': '65 64 64',
-    '--color-background-900': '39 38 37',
-    '--color-background-950': '18 18 18',
+    /* Background - based on #8C52FF */
+    '--color-background-0': '250 247 255',  // Very light purple tint
+    '--color-background-50': '245 240 255',  // Light purple tint
+    '--color-background-100': '240 233 255', // Lighter purple tint
+    '--color-background-200': '230 220 255', // Light purple
+    '--color-background-300': '220 207 255', // Medium light purple
+    '--color-background-400': '200 180 255', // Medium purple
+    '--color-background-500': '180 150 255', // Medium-dark purple
+    '--color-background-600': '160 130 240', // Darker purple
+    '--color-background-700': '140 110 220', // Dark purple
+    '--color-background-800': '120 90 200',  // Very dark purple
+    '--color-background-900': '100 70 180',  // Almost black purple
+    '--color-background-950': '80 50 160',   // Deep purple
 
     /* Background Special */
     '--color-background-error': '254 241 241',
@@ -150,23 +151,24 @@ export const config = {
     '--color-background-info': '235 248 254',
 
     /* Focus Ring Indicator  */
-    '--color-indicator-primary': '55 55 55',
+    '--color-indicator-primary': '140 82 255',  // #8C52FF
     '--color-indicator-info': '83 153 236',
     '--color-indicator-error': '185 28 28',
   }),
   dark: vars({
-    '--color-primary-0': '166 166 166',
-    '--color-primary-50': '175 175 175',
-    '--color-primary-100': '186 186 186',
-    '--color-primary-200': '197 197 197',
-    '--color-primary-300': '212 212 212',
-    '--color-primary-400': '221 221 221',
-    '--color-primary-500': '230 230 230',
-    '--color-primary-600': '240 240 240',
-    '--color-primary-700': '250 250 250',
-    '--color-primary-800': '253 253 253',
-    '--color-primary-900': '254 249 249',
-    '--color-primary-950': '253 252 252',
+    // Primary color palette based on #8C52FF (140, 82, 255) - inverted for dark mode
+    '--color-primary-0': '40 23 100',
+    '--color-primary-50': '60 35 140',
+    '--color-primary-100': '80 46 170',
+    '--color-primary-200': '100 58 200',
+    '--color-primary-300': '120 70 230',
+    '--color-primary-400': '140 82 255',  // #8C52FF - main color
+    '--color-primary-500': '170 130 255',
+    '--color-primary-600': '200 170 255',
+    '--color-primary-700': '220 200 255',
+    '--color-primary-800': '235 225 255',
+    '--color-primary-900': '245 240 255',
+    '--color-primary-950': '250 247 255',
 
     /* Secondary  */
     '--color-secondary-0': '20 20 20',
@@ -280,19 +282,19 @@ export const config = {
     '--color-outline-900': '243 243 243',
     '--color-outline-950': '253 254 254',
 
-    /* Background */
-    '--color-background-0': '18 18 18',
-    '--color-background-50': '39 38 37',
-    '--color-background-100': '65 64 64',
-    '--color-background-200': '83 82 82',
-    '--color-background-300': '116 116 116',
-    '--color-background-400': '142 142 142',
-    '--color-background-500': '162 163 163',
-    '--color-background-600': '213 212 212',
-    '--color-background-700': '229 228 228',
-    '--color-background-800': '242 241 241',
-    '--color-background-900': '246 246 246',
-    '--color-background-950': '255 255 255',
+    /* Background - based on #8C52FF for dark mode */
+    '--color-background-0': '20 15 35',     // Very dark purple
+    '--color-background-50': '30 22 50',   // Dark purple
+    '--color-background-100': '40 30 70',  // Darker purple
+    '--color-background-200': '50 38 90',  // Medium dark purple
+    '--color-background-300': '60 46 110', // Medium purple
+    '--color-background-400': '70 54 130', // Medium-light purple
+    '--color-background-500': '80 62 150', // Light purple
+    '--color-background-600': '100 78 180', // Lighter purple
+    '--color-background-700': '120 94 210', // Very light purple
+    '--color-background-800': '140 110 230', // Almost white purple
+    '--color-background-900': '160 130 240', // Light purple tint
+    '--color-background-950': '180 150 250', // Very light purple tint
 
     /* Background Special */
     '--color-background-error': '66 43 43',
@@ -302,7 +304,7 @@ export const config = {
     '--color-background-info': '26 40 46',
 
     /* Focus Ring Indicator  */
-    '--color-indicator-primary': '247 247 247',
+    '--color-indicator-primary': '140 82 255',  // #8C52FF
     '--color-indicator-info': '161 199 245',
     '--color-indicator-error': '232 70 69',
   }),
