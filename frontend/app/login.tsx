@@ -19,7 +19,7 @@ import {
   AlertText,
   Spinner,
 } from '@/components/ui';
-import { apiService, setAuthToken } from '@/services/api';
+import { apiService, setAuthToken, setCurrentUser } from '@/services/api';
 
 type StatusType = 'idle' | 'loading' | 'success' | 'error';
 
@@ -68,6 +68,7 @@ export default function LoginScreen() {
       });
 
       setAuthToken(response.access_token);
+      setCurrentUser(response.user);
       setStatus('success');
       setStatusMessage('Login successful! Redirecting...');
 

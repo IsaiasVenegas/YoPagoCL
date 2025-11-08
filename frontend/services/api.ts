@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.140:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.140:8000';
 
 export interface RegisterRequest {
   email: string;
@@ -32,6 +32,7 @@ export interface ApiError {
 
 // Store token in memory (in production, use secure storage)
 let authToken: string | null = null;
+let currentUser: User | null = null;
 
 export const setAuthToken = (token: string | null) => {
   authToken = token;
@@ -39,6 +40,14 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = (): string | null => {
   return authToken;
+};
+
+export const setCurrentUser = (user: User | null) => {
+  currentUser = user;
+};
+
+export const getCurrentUser = (): User | null => {
+  return currentUser;
 };
 
 // API Service
@@ -97,6 +106,7 @@ class ApiService {
       method: 'GET',
     });
     setAuthToken(null);
+    setCurrentUser(null);
   }
 }
 
