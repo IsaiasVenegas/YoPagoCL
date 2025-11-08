@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Database configuration
     SQLITE_FILE_NAME: str
 
+    # OAUTH2
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:  # noqa

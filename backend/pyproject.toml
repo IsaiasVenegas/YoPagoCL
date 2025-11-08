@@ -10,4 +10,5 @@ dependencies = [
     "alembic>=1.13.0",
     "sqlmodel>=0.0.27",
     "pydantic-settings>=2.11.0",
+    "authlib>=1.6.5",
 ]
