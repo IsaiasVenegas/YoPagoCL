@@ -1,13 +1,27 @@
 import uuid
 from datetime import datetime
-from fastapi import WebSocket, WebSocketDisconnect, HTTPException
-from sqlmodel import Session, select
+from fastapi import WebSocket, WebSocketDisconnect
+from sqlmodel import Session
 
 from api.websocket.manager import manager
 from models.table_sessions import TableSession
-from models.table_participants import TableParticipant
-from models.order_items import OrderItem
-from models.item_assignments import ItemAssignment
+from crud.table_participants import (
+    get_participants_by_session_id,
+    get_participant_by_session_and_user,
+    get_participant_by_id,
+    create_participant
+)
+from crud.order_items import (
+    get_order_items_by_session_id,
+    get_order_item_by_id
+)
+from crud.item_assignments import (
+    get_assignments_by_session_id,
+    get_assignment_by_id,
+    create_assignment,
+    update_assignment,
+    delete_assignment
+)
 from schemas.websocket import (
     JoinSessionMessage,
     AssignItemMessage,
@@ -29,6 +43,43 @@ from schemas.websocket import (
 _websocket_participants: dict[WebSocket, uuid.UUID] = {}
 
 
+async def _cleanup_participant(websocket: WebSocket, session_id: uuid.UUID):
+    """Clean up participant tracking and broadcast leave message."""
+    participant_id = _websocket_participants.pop(websocket, None)
+    if participant_id:
+        broadcast_msg = ParticipantLeftMessage(participant_id=participant_id)
+        await manager.broadcast_to_session(
+            broadcast_msg.model_dump(),
+            session_id,
+            exclude=websocket
+        )
+
+
+async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
+    """Route incoming message to appropriate handler."""
+    message_type = data.get("type")
+    
+    handlers = {
+        "join_session": lambda: handle_join_session(websocket, session_id, data, db),
+        "assign_item": lambda: handle_assign_item(websocket, session_id, data, db),
+        "update_assignment": lambda: handle_update_assignment(websocket, session_id, data, db),
+        "remove_assignment": lambda: handle_remove_assignment(websocket, session_id, data, db),
+        "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
+        "request_summary": lambda: handle_request_summary(websocket, session_id, db),
+        "validate_assignments": lambda: handle_validate_assignments(websocket, session_id, db),
+        "finalize_session": lambda: handle_finalize_session(websocket, session_id, db),
+    }
+    
+    handler = handlers.get(message_type)
+    if handler:
+        await handler()
+    else:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Unknown message type: {message_type}"
+        })
+
+
 async def websocket_session_endpoint(websocket: WebSocket, session_id: uuid.UUID, db: Session):
     """WebSocket endpoint for real-time session management."""
     await manager.connect(websocket, session_id)
@@ -45,70 +96,17 @@ async def websocket_session_endpoint(websocket: WebSocket, session_id: uuid.UUID
         
         while True:
             data = await websocket.receive_json()
-            message_type = data.get("type")
-            
-            if message_type == "join_session":
-                await handle_join_session(websocket, session_id, data, db)
-            
-            elif message_type == "assign_item":
-                await handle_assign_item(websocket, session_id, data, db)
-            
-            elif message_type == "update_assignment":
-                await handle_update_assignment(websocket, session_id, data, db)
-            
-            elif message_type == "remove_assignment":
-                await handle_remove_assignment(websocket, session_id, data, db)
-            
-            elif message_type == "calculate_equal_split":
-                await handle_calculate_equal_split(websocket, session_id, db)
-            
-            elif message_type == "request_summary":
-                await handle_request_summary(websocket, session_id, db)
-            
-            elif message_type == "validate_assignments":
-                await handle_validate_assignments(websocket, session_id, db)
-            
-            elif message_type == "finalize_session":
-                await handle_finalize_session(websocket, session_id, db)
-            
-            else:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Unknown message type: {message_type}"
-                })
+            await _handle_message(websocket, session_id, data, db)
     
     except WebSocketDisconnect:
-        # Identify which participant left
-        participant_id = _websocket_participants.get(websocket)
-        if participant_id:
-            # Broadcast to others that participant left
-            broadcast_msg = ParticipantLeftMessage(participant_id=participant_id)
-            await manager.broadcast_to_session(
-                broadcast_msg.model_dump(),
-                session_id,
-                exclude=websocket
-            )
-            # Remove from tracking
-            del _websocket_participants[websocket]
-        
+        await _cleanup_participant(websocket, session_id)
         manager.disconnect(websocket)
     except Exception as e:
         await websocket.send_json({
             "type": "error",
             "message": str(e)
         })
-        
-        # Clean up participant tracking if websocket was tracked
-        participant_id = _websocket_participants.pop(websocket, None)
-        if participant_id:
-            # Broadcast to others that participant left
-            broadcast_msg = ParticipantLeftMessage(participant_id=participant_id)
-            await manager.broadcast_to_session(
-                broadcast_msg.model_dump(),
-                session_id,
-                exclude=websocket
-            )
-        
+        await _cleanup_participant(websocket, session_id)
         manager.disconnect(websocket)
 
 
@@ -118,19 +116,11 @@ async def send_session_state(websocket: WebSocket, session_id: uuid.UUID, db: Se
     if not session:
         return
     
-    participants = db.exec(
-        select(TableParticipant).where(TableParticipant.session_id == session_id)
-    ).all()
+    participants = get_participants_by_session_id(db, session_id)
     
-    order_items = db.exec(
-        select(OrderItem).where(OrderItem.session_id == session_id)
-    ).all()
+    order_items = get_order_items_by_session_id(db, session_id)
     
-    assignments = db.exec(
-        select(ItemAssignment)
-        .join(OrderItem, OrderItem.id == ItemAssignment.order_item_id)
-        .where(OrderItem.session_id == session_id)
-    ).all()
+    assignments = get_assignments_by_session_id(db, session_id)
     
     message = SessionStateMessage(
         session={
@@ -168,21 +158,10 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
         msg = JoinSessionMessage(**data)
         
         # Check if participant already exists
-        existing = db.exec(
-            select(TableParticipant).where(
-                TableParticipant.session_id == session_id,
-                TableParticipant.user_id == msg.user_id
-            )
-        ).first()
+        existing = get_participant_by_session_and_user(db, session_id, msg.user_id)
         
         if not existing:
-            participant = TableParticipant(
-                session_id=session_id,
-                user_id=msg.user_id
-            )
-            db.add(participant)
-            db.commit()
-            db.refresh(participant)
+            participant = create_participant(db, session_id, msg.user_id)
             
             # Track this websocket -> participant mapping
             _websocket_participants[websocket] = participant.id
@@ -214,7 +193,7 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
         msg = AssignItemMessage(**data)
         
         # Verify order item belongs to session
-        order_item = db.get(OrderItem, msg.order_item_id)
+        order_item = get_order_item_by_id(db, msg.order_item_id)
         if not order_item or order_item.session_id != session_id:
             await websocket.send_json({
                 "type": "error",
@@ -223,7 +202,7 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
             return
         
         # Verify participants exist
-        creditor = db.get(TableParticipant, msg.creditor_id)
+        creditor = get_participant_by_id(db, msg.creditor_id)
         if not creditor or creditor.session_id != session_id:
             await websocket.send_json({
                 "type": "error",
@@ -232,7 +211,7 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
             return
         
         if msg.debtor_id:
-            debtor = db.get(TableParticipant, msg.debtor_id)
+            debtor = get_participant_by_id(db, msg.debtor_id)
             if not debtor or debtor.session_id != session_id:
                 await websocket.send_json({
                     "type": "error",
@@ -240,15 +219,13 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
                 })
                 return
         
-        assignment = ItemAssignment(
-            order_item_id=msg.order_item_id,
-            creditor_id=msg.creditor_id,
-            debtor_id=msg.debtor_id,
-            assigned_amount=msg.assigned_amount
+        assignment = create_assignment(
+            db,
+            msg.order_item_id,
+            msg.creditor_id,
+            msg.debtor_id,
+            msg.assigned_amount
         )
-        db.add(assignment)
-        db.commit()
-        db.refresh(assignment)
         
         # Broadcast to all
         broadcast_msg = ItemAssignedMessage(
@@ -275,7 +252,7 @@ async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, 
     try:
         msg = UpdateAssignmentMessage(**data)
         
-        assignment = db.get(ItemAssignment, msg.assignment_id)
+        assignment = get_assignment_by_id(db, msg.assignment_id)
         if not assignment:
             await websocket.send_json({
                 "type": "error",
@@ -284,7 +261,7 @@ async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             return
         
         # Verify assignment belongs to session
-        order_item = db.get(OrderItem, assignment.order_item_id)
+        order_item = get_order_item_by_id(db, assignment.order_item_id)
         if not order_item or order_item.session_id != session_id:
             await websocket.send_json({
                 "type": "error",
@@ -292,10 +269,7 @@ async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             })
             return
         
-        assignment.assigned_amount = msg.assigned_amount
-        db.add(assignment)
-        db.commit()
-        db.refresh(assignment)
+        assignment = update_assignment(db, msg.assignment_id, msg.assigned_amount)
         
         # Broadcast to all
         broadcast_msg = AssignmentUpdatedMessage(
@@ -319,7 +293,7 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
     try:
         msg = RemoveAssignmentMessage(**data)
         
-        assignment = db.get(ItemAssignment, msg.assignment_id)
+        assignment = get_assignment_by_id(db, msg.assignment_id)
         if not assignment:
             await websocket.send_json({
                 "type": "error",
@@ -328,7 +302,7 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             return
         
         # Verify assignment belongs to session
-        order_item = db.get(OrderItem, assignment.order_item_id)
+        order_item = get_order_item_by_id(db, assignment.order_item_id)
         if not order_item or order_item.session_id != session_id:
             await websocket.send_json({
                 "type": "error",
@@ -336,8 +310,7 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             })
             return
         
-        db.delete(assignment)
-        db.commit()
+        delete_assignment(db, msg.assignment_id)
         
         # Broadcast to all
         broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
@@ -364,15 +337,11 @@ async def handle_calculate_equal_split(websocket: WebSocket, session_id: uuid.UU
         total = session.total_amount or 0
         if total == 0:
             # Calculate from order items
-            order_items = db.exec(
-                select(OrderItem).where(OrderItem.session_id == session_id)
-            ).all()
+            order_items = get_order_items_by_session_id(db, session_id)
             total = sum(item.unit_price for item in order_items)
         
         # Get participant count
-        participants = db.exec(
-            select(TableParticipant).where(TableParticipant.session_id == session_id)
-        ).all()
+        participants = get_participants_by_session_id(db, session_id)
         participant_count = len(participants)
         
         if participant_count == 0:
@@ -406,11 +375,7 @@ async def handle_request_summary(websocket: WebSocket, session_id: uuid.UUID, db
     """Handle request_summary message."""
     try:
         # Calculate summary: participant_id -> total_amount
-        assignments = db.exec(
-            select(ItemAssignment)
-            .join(OrderItem, OrderItem.id == ItemAssignment.order_item_id)
-            .where(OrderItem.session_id == session_id)
-        ).all()
+        assignments = get_assignments_by_session_id(db, session_id)
         
         summary = {}
         for assignment in assignments:
@@ -437,16 +402,10 @@ async def handle_validate_assignments(websocket: WebSocket, session_id: uuid.UUI
     """Handle validate_assignments message."""
     try:
         # Get all order items
-        order_items = db.exec(
-            select(OrderItem).where(OrderItem.session_id == session_id)
-        ).all()
+        order_items = get_order_items_by_session_id(db, session_id)
         
         # Get all assignments
-        assignments = db.exec(
-            select(ItemAssignment)
-            .join(OrderItem, OrderItem.id == ItemAssignment.order_item_id)
-            .where(OrderItem.session_id == session_id)
-        ).all()
+        assignments = get_assignments_by_session_id(db, session_id)
         
         # Check which items are fully assigned
         assigned_items = {a.order_item_id for a in assignments}
@@ -485,11 +444,7 @@ async def handle_finalize_session(websocket: WebSocket, session_id: uuid.UUID, d
             return
         
         # Calculate total from assignments
-        assignments = db.exec(
-            select(ItemAssignment)
-            .join(OrderItem, OrderItem.id == ItemAssignment.order_item_id)
-            .where(OrderItem.session_id == session_id)
-        ).all()
+        assignments = get_assignments_by_session_id(db, session_id)
         
         total_amount = sum(a.assigned_amount for a in assignments)
         
