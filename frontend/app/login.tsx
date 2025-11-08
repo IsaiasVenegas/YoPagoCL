@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import {
   Box,
@@ -149,8 +149,8 @@ export default function LoginScreen() {
                   />
                   <InputSlot className="pr-3" onPress={handleTogglePassword}>
                     <InputIcon
-                      as={MaterialCommunityIcons}
-                      name={showPassword ? 'eye' : 'eye-off'}
+                      as={showPassword ? Eye : EyeOff}
+                      className="text-typography-600"
                     />
                   </InputSlot>
                 </Input>

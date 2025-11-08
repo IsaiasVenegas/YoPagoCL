@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import {
   Box,
@@ -190,8 +190,8 @@ export default function RegisterScreen() {
                   />
                   <InputSlot className="pr-3" onPress={handleTogglePassword}>
                     <InputIcon
-                      as={MaterialCommunityIcons}
-                      name={showPassword ? 'eye' : 'eye-off'}
+                      as={showPassword ? Eye : EyeOff}
+                      className="text-typography-600"
                     />
                   </InputSlot>
                 </Input>
@@ -210,8 +210,8 @@ export default function RegisterScreen() {
                   />
                   <InputSlot className="pr-3" onPress={handleToggleConfirmPassword}>
                     <InputIcon
-                      as={MaterialCommunityIcons}
-                      name={showConfirmPassword ? 'eye' : 'eye-off'}
+                      as={showConfirmPassword ? Eye : EyeOff}
+                      className="text-typography-600"
                     />
                   </InputSlot>
                 </Input>
