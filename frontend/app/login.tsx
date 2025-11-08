@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
@@ -25,6 +25,7 @@ type StatusType = 'idle' | 'loading' | 'success' | 'error';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -72,9 +73,18 @@ export default function LoginScreen() {
       setStatus('success');
       setStatusMessage('Login successful! Redirecting...');
 
-      // Redirect to home after a short delay
+      // Redirect after a short delay
       setTimeout(() => {
-        router.replace('/home');
+        // If there's a redirectSessionId from deeplink, go to scan screen
+        const redirectSessionId = params.redirectSessionId;
+        if (redirectSessionId && typeof redirectSessionId === 'string') {
+          router.replace({
+            pathname: '/scan',
+            params: { sessionId: redirectSessionId }
+          });
+        } else {
+          router.replace('/home');
+        }
       }, 1500);
     } catch (error: any) {
       setStatus('error');

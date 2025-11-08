@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StyleSheet, View, Alert } from 'react-native';
 import {
@@ -26,6 +26,7 @@ const UUID_REGEX =
 
 export default function ScanScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -41,11 +42,51 @@ export default function ScanScreen() {
     // Check if user is authenticated
     const token = getAuthToken();
     if (!token) {
-      router.replace('/login');
+      // If there's a sessionId from deeplink, pass it to login for redirect
+      if (params.sessionId && typeof params.sessionId === 'string') {
+        router.replace({
+          pathname: '/login',
+          params: { redirectSessionId: params.sessionId }
+        });
+      } else {
+        router.replace('/login');
+      }
     } else {
       setIsAuthenticated(true);
     }
-  }, []);
+  }, [params.sessionId]);
+
+  useEffect(() => {
+    // Check if session ID came from deeplink
+    if (params.sessionId && typeof params.sessionId === 'string' && isAuthenticated) {
+      const deeplinkSessionId = params.sessionId;
+      if (UUID_REGEX.test(deeplinkSessionId)) {
+        // User came from deeplink and is authenticated, connect to session
+        handleDeeplinkSession(deeplinkSessionId);
+      }
+    }
+  }, [params.sessionId, isAuthenticated]);
+
+  const handleDeeplinkSession = async (sessionId: string) => {
+    setScanned(true);
+    setSessionId(sessionId);
+    setError(null);
+
+    const user = getCurrentUser();
+    if (!user) {
+      setError('User not found. Please login again.');
+      router.replace('/login');
+      return;
+    }
+
+    try {
+      await websocketService.connect(sessionId, user.id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect to session');
+      setScanned(false);
+      setSessionId(null);
+    }
+  };
 
   useEffect(() => {
     // Set up websocket message listener
@@ -106,15 +147,29 @@ export default function ScanScreen() {
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
 
-    // Validate UUID format
     const trimmedData = data.trim();
-    if (!UUID_REGEX.test(trimmedData)) {
-      Alert.alert('Invalid QR Code', 'The scanned QR code does not contain a valid session ID.');
+    let sessionId: string | null = null;
+
+    // Only accept deeplink URL format: yopagocl://session/{session_id}
+    if (trimmedData.startsWith('yopagocl://session/')) {
+      // Extract session ID from deeplink URL
+      const urlParts = trimmedData.split('/');
+      const extractedId = urlParts[urlParts.length - 1];
+      if (UUID_REGEX.test(extractedId)) {
+        sessionId = extractedId;
+      }
+    }
+
+    if (!sessionId) {
+      Alert.alert(
+        'Invalid QR Code',
+        'The scanned QR code must be in the format: yopagocl://session/{session_id}'
+      );
       return;
     }
 
     setScanned(true);
-    setSessionId(trimmedData);
+    setSessionId(sessionId);
     setError(null);
 
     // Get current user
@@ -127,7 +182,7 @@ export default function ScanScreen() {
 
     try {
       // Connect to websocket
-      await websocketService.connect(trimmedData, user.id);
+      await websocketService.connect(sessionId, user.id);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to session');
       setScanned(false);
