@@ -126,3 +126,5 @@ Thumbs.db
 # Project specific
 uv.lock.backup
 
+# QR codes
+qr_codes/
