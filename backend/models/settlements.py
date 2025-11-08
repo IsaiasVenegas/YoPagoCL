@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from models.users import User
 
 
-class Payment(SQLModel, table=True):
-    __tablename__ = "payments"
+class Settlement(SQLModel, table=True):
+    __tablename__ = "settlements"
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -30,7 +30,7 @@ class Payment(SQLModel, table=True):
     )
 
     # Relationships
-    invoice: "Invoice | None" = Relationship(back_populates="payment")
+    invoice: "Invoice | None" = Relationship(back_populates="settlement")
     from_user_rel: "User" = Relationship()
     to_user_rel: "User" = Relationship()
 

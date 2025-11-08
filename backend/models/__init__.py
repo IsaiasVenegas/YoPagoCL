@@ -8,7 +8,7 @@ from models.table_participants import TableParticipant
 from models.order_items import OrderItem
 from models.item_assignments import ItemAssignment
 from models.invoices import Invoice
-from models.payments import Payment
+from models.settlements import Settlement
 from models.invoice_items import InvoiceItem
 from models.payment_reminders import PaymentReminder
 
@@ -23,7 +23,7 @@ __all__ = [
     "OrderItem",
     "ItemAssignment",
     "Invoice",
-    "Payment",
+    "Settlement",
     "InvoiceItem",
     "PaymentReminder",
 ]

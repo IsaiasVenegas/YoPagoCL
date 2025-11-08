@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from models.table_sessions import TableSession
     from models.groups import Group
-    from models.payments import Payment
+    from models.settlements import Settlement
     from models.invoice_items import InvoiceItem
     from models.payment_reminders import PaymentReminder
 
@@ -30,7 +30,7 @@ class Invoice(SQLModel, table=True):
     )
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     status: str = Field(default="pending", max_length=20, nullable=False)  # pending, paid, cancelled
-    payment_id: uuid.UUID | None = Field(foreign_key="payments.id", default=None, nullable=True)
+    settlement_id: uuid.UUID | None = Field(foreign_key="settlements.id", default=None, nullable=True)
     due_date: date | None = Field(default=None, nullable=True)
     paid_at: datetime | None = Field(default=None, nullable=True)
     frequency_cycle: str = Field(default="daily", max_length=20, nullable=False)  # daily, weekly, monthly, none
@@ -42,7 +42,7 @@ class Invoice(SQLModel, table=True):
     # Relationships
     session: "TableSession" = Relationship(back_populates="invoices")
     group: "Group | None" = Relationship()
-    payment: "Payment | None" = Relationship(back_populates="invoice")
+    settlement: "Settlement | None" = Relationship(back_populates="invoice")
     invoice_items: list["InvoiceItem"] = Relationship(back_populates="invoice")
     payment_reminders: list["PaymentReminder"] = Relationship(back_populates="invoice")
 

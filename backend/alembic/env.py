@@ -35,7 +35,7 @@ from models import (  # noqa: F401
     OrderItem,
     ItemAssignment,
     Invoice,
-    Payment,
+    Settlement,
     InvoiceItem,
     PaymentReminder,
 )
