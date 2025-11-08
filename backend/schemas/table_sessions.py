@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
-
 class SessionResponse(BaseModel):
     id: uuid.UUID
     restaurant_id: str
@@ -18,6 +17,10 @@ class SessionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class OrderItemCreate(BaseModel):
+    item_name: str
+    unit_price: int
 
 class OrderItemResponse(BaseModel):
     id: uuid.UUID
@@ -38,6 +41,12 @@ class TableParticipantResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class SessionCreate(BaseModel):
+    restaurant_id: str
+    table_id: uuid.UUID
+    session_start: datetime
+    items: list[OrderItemCreate]
 
 
 class SessionClose(BaseModel):

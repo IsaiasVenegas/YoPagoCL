@@ -1,73 +1,70 @@
 import uuid
 from fastapi import APIRouter, HTTPException
-from sqlmodel import select
 
 from api.deps import SessionDep
-from models.table_sessions import TableSession
-from models.order_items import OrderItem
-from models.table_participants import TableParticipant
 from schemas.table_sessions import (
     SessionResponse,
     OrderItemResponse,
     TableParticipantResponse,
     SessionClose,
+    SessionCreate,
+)
+from crud.table_sessions import (
+    create_session_with_items,
+    get_session_by_id,
+    get_session_items as get_items_for_session,
+    get_session_participants as get_participants_for_session,
+    close_session,
 )
 
+SESSION_NOT_FOUND = "Session not found"
+
 router = APIRouter(prefix="/table_sessions", tags=["table_sessions"])
+
+@router.post("", response_model=SessionResponse, status_code=201)
+def create_session(session_data: SessionCreate, db: SessionDep):
+    """Create a new table session."""
+    session = create_session_with_items(db, session_data)
+    return session
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
 def get_session(session_id: uuid.UUID, db: SessionDep):
     """Get session information."""
-    session = db.get(TableSession, session_id)
+    session = get_session_by_id(db, session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     return session
 
 
 @router.get("/{session_id}/items", response_model=list[OrderItemResponse])
 def get_session_items(session_id: uuid.UUID, db: SessionDep):
     """Get order items for a session."""
-    session = db.get(TableSession, session_id)
+    session = get_session_by_id(db, session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     
-    items = db.exec(
-        select(OrderItem).where(OrderItem.session_id == session_id)
-    ).all()
-    
+    items = get_items_for_session(db, session_id)
     return items
 
 
 @router.get("/{session_id}/participants", response_model=list[TableParticipantResponse])
 def get_session_participants(session_id: uuid.UUID, db: SessionDep):
     """Get participants for a session."""
-    session = db.get(TableSession, session_id)
+    session = get_session_by_id(db, session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     
-    participants = db.exec(
-        select(TableParticipant).where(TableParticipant.session_id == session_id)
-    ).all()
-    
+    participants = get_participants_for_session(db, session_id)
     return participants
 
 
 @router.put("/{session_id}/close", response_model=SessionResponse)
-def close_session(session_id: uuid.UUID, close_data: SessionClose, db: SessionDep):
+def close_session_endpoint(session_id: uuid.UUID, close_data: SessionClose, db: SessionDep):
     """Close a session."""
-    from datetime import datetime
-    
-    session = db.get(TableSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    session.status = close_data.status
-    session.session_end = datetime.now()
-    
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    
-    return session
+    try:
+        session = close_session(db, session_id, close_data)
+        return session
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
