@@ -9,8 +9,8 @@ from urllib.parse import urlencode
 from api.deps import SessionDep
 from crud.auth import get_or_create_user_from_oauth
 from core.security import create_access_token
+from core.oauth import oauth
 from schemas.auth import AuthorizationUrlResponse, TokenResponse, UserResponse, LoginCallbackRequest
-from main import oauth
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
