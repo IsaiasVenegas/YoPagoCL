@@ -3,7 +3,7 @@ from typing import Generator
 from sqlmodel import Session, create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.core.config import settings
+from core.config import settings
 
 engine = create_engine(settings.SQLALCHEMY_DATABASE_URI) # type: ignore
 
