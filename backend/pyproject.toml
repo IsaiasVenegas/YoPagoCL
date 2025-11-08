@@ -16,4 +16,5 @@ dependencies = [
     "httpx>=0.25.0",
     "jwt>=1.4.0",
     "itsdangerous>=2.1.0",
+    "passlib[bcrypt]>=1.7.4",
 ]

@@ -2,8 +2,12 @@ import jwt
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
+from passlib.context import CryptContext
 
 from core.config import settings
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -51,4 +55,14 @@ def get_user_id_from_token(token: str) -> Optional[UUID]:
         except (ValueError, TypeError):
             return None
     return None
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    """Hash a password."""
+    return pwd_context.hash(password)
 

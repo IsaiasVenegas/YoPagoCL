@@ -32,3 +32,17 @@ class LoginCallbackRequest(BaseModel):
     state: str
     redirect_uri: str
 
+
+class RegisterRequest(BaseModel):
+    """Request to register a new user with email and password."""
+    email: str
+    password: str
+    name: str
+    phone: str | None = None
+
+
+class LoginRequest(BaseModel):
+    """Request to login with email and password."""
+    email: str
+    password: str
+

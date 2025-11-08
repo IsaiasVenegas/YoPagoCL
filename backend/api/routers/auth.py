@@ -7,10 +7,17 @@ from authlib.integrations.starlette_client import OAuthError
 from urllib.parse import urlencode
 
 from api.deps import SessionDep
-from crud.auth import get_or_create_user_from_oauth
+from crud.auth import get_or_create_user_from_oauth, create_user_with_password, authenticate_user
 from core.security import create_access_token
 from core.oauth import oauth
-from schemas.auth import AuthorizationUrlResponse, TokenResponse, UserResponse, LoginCallbackRequest
+from schemas.auth import (
+    AuthorizationUrlResponse,
+    TokenResponse,
+    UserResponse,
+    LoginCallbackRequest,
+    RegisterRequest,
+    LoginRequest
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -151,6 +158,84 @@ async def exchange_code(
     
     # Clean up state
     _pkce_states.pop(callback_data.state, None)
+    
+    return TokenResponse(
+        access_token=access_token,
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            phone=user.phone
+        )
+    )
+
+
+@router.post("/register", response_model=TokenResponse)
+async def register(
+    register_data: RegisterRequest,
+    db: SessionDep
+):
+    """Register a new user with email and password.
+    
+    Args:
+        register_data: User registration data (email, password, name, optional phone)
+    
+    Returns:
+        Access token and user information
+    """
+    try:
+        user = create_user_with_password(
+            db=db,
+            email=register_data.email,
+            password=register_data.password,
+            name=register_data.name,
+            phone=register_data.phone
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Create JWT token
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+    
+    return TokenResponse(
+        access_token=access_token,
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            phone=user.phone
+        )
+    )
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    login_data: LoginRequest,
+    db: SessionDep
+):
+    """Login with email and password.
+    
+    Args:
+        login_data: User login credentials (email and password)
+    
+    Returns:
+        Access token and user information
+    """
+    user = authenticate_user(
+        db=db,
+        email=login_data.email,
+        password=login_data.password
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Create JWT token
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
     
     return TokenResponse(
         access_token=access_token,
