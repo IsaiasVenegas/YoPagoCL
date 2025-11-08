@@ -1,19 +1,18 @@
 """empty message
 
-Revision ID: 05f08a87555b
+Revision ID: 818a30796993
 Revises: 
-Create Date: 2025-11-08 10:30:13.604990
+Create Date: 2025-11-08 12:10:30.844086
 
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '05f08a87555b'
+revision: str = '818a30796993'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -31,17 +30,17 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('currency', sqlmodel.sql.sqltypes.AutoString(length=3), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(length=20), nullable=False),
-    sa.Column('payment_id', sa.Uuid(), nullable=True),
+    sa.Column('settlement_id', sa.Uuid(), nullable=True),
     sa.Column('due_date', sa.Date(), nullable=True),
     sa.Column('paid_at', sa.DateTime(), nullable=True),
     sa.Column('frequency_cycle', sqlmodel.sql.sqltypes.AutoString(length=20), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['group_id'], ['groups.id'], ),
-    sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ),
     sa.ForeignKeyConstraint(['session_id'], ['table_sessions.id'], ),
+    sa.ForeignKeyConstraint(['settlement_id'], ['settlements.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('payments',
+    op.create_table('settlements',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('invoice_id', sa.Uuid(), nullable=True),
     sa.Column('from_user', sa.Uuid(), nullable=False),
@@ -61,7 +60,7 @@ def upgrade() -> None:
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
     sa.Column('email', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
     sa.Column('phone', sqlmodel.sql.sqltypes.AutoString(length=20), nullable=True),
-    sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
+    sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.PrimaryKeyConstraint('id')
@@ -192,6 +191,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_index('idx_user_email', table_name='users')
     op.drop_table('users')
-    op.drop_table('payments')
+    op.drop_table('settlements')
     op.drop_table('invoices')
     # ### end Alembic commands ###
