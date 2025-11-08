@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date
 from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from core.config import settings
 
@@ -32,7 +32,14 @@ class Settlement(SQLModel, table=True):
     )
 
     # Relationships
-    invoice: "Invoice | None" = Relationship(back_populates="settlement")
-    from_user_rel: "User" = Relationship()
-    to_user_rel: "User" = Relationship()
-
+    invoice: Optional["Invoice"] = Relationship(back_populates="settlement")
+    from_user_rel: "User" = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": lambda: [Settlement.__table__.c.from_user]
+        }
+    )
+    to_user_rel: "User" = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": lambda: [Settlement.__table__.c.to_user]
+        }
+    )

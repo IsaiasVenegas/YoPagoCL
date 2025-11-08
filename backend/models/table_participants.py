@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from core.config import settings
 
@@ -29,11 +29,16 @@ class TableParticipant(SQLModel, table=True):
 
     # Relationships
     session: "TableSession" = Relationship(back_populates="participants")
-    user: "User | None" = Relationship()
+    user: Optional["User"] = Relationship()
     creditor_assignments: list["ItemAssignment"] = Relationship(
-        back_populates="creditor"
+        back_populates="creditor",
+        sa_relationship_kwargs={
+            "foreign_keys": "[ItemAssignment.creditor_id]"
+        }
     )
     debtor_assignments: list["ItemAssignment"] = Relationship(
-        back_populates="debtor"
+        back_populates="debtor",
+        sa_relationship_kwargs={
+            "foreign_keys": "[ItemAssignment.debtor_id]"
+        }
     )
-

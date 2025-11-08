@@ -12,7 +12,7 @@ def get_or_create_user_from_oauth(
 ) -> User:
     """Get existing user or create new user from OAuth data."""
     # Try to find existing user by email
-    user = db.exec(select(User).where(User.email == email)).first()
+    user = db.scalars(select(User).where(User.email == email)).first()
     
     if user:
         # Update name if it changed
@@ -46,7 +46,7 @@ def create_user_with_password(
 ) -> User:
     """Create a new user with email and password."""
     # Check if user already exists
-    existing_user = db.exec(select(User).where(User.email == email)).first()
+    existing_user = db.scalars(select(User).where(User.email == email)).first()
     if existing_user:
         raise ValueError("User with this email already exists")
     
@@ -74,7 +74,7 @@ def authenticate_user(
     password: str
 ) -> User | None:
     """Authenticate a user with email and password."""
-    user = db.exec(select(User).where(User.email == email)).first()
+    user = db.scalars(select(User).where(User.email == email)).first()
     
     if not user:
         return None

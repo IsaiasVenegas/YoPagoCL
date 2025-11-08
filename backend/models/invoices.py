@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date
 from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from core.config import settings
 
@@ -32,7 +32,7 @@ class Invoice(SQLModel, table=True):
     )
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     status: str = Field(default="pending", max_length=20, nullable=False)  # pending, paid, cancelled
-    settlement_id: uuid.UUID | None = Field(foreign_key="settlements.id", default=None, nullable=True)
+    # ELIMINADO: settlement_id
     due_date: date | None = Field(default=None, nullable=True)
     paid_at: datetime | None = Field(default=None, nullable=True)
     frequency_cycle: str = Field(default="daily", max_length=20, nullable=False)  # daily, weekly, monthly, none
@@ -43,8 +43,10 @@ class Invoice(SQLModel, table=True):
 
     # Relationships
     session: "TableSession" = Relationship(back_populates="invoices")
-    group: "Group | None" = Relationship()
-    settlement: "Settlement | None" = Relationship(back_populates="invoice")
+    group: Optional["Group"] = Relationship()
+    settlement: Optional["Settlement"] = Relationship(
+        back_populates="invoice",
+        sa_relationship_kwargs={"uselist": False}  # Uno-a-uno
+    )
     invoice_items: list["InvoiceItem"] = Relationship(back_populates="invoice")
     payment_reminders: list["PaymentReminder"] = Relationship(back_populates="invoice")
-
