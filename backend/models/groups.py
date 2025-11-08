@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.users import User
     from models.group_members import GroupMember
@@ -22,11 +24,11 @@ class Group(SQLModel, table=True):
     description: str | None = Field(default=None, nullable=True)
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     )
     created_by: uuid.UUID = Field(foreign_key="users.id", nullable=False)

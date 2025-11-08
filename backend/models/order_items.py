@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.table_sessions import TableSession
     from models.item_assignments import ItemAssignment
@@ -21,7 +23,7 @@ class OrderItem(SQLModel, table=True):
     item_name: str = Field(max_length=200, nullable=False)
     unit_price: int = Field(nullable=False)  # in centavos
     ordered_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
 

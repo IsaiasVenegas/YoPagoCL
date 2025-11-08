@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.table_sessions import TableSession
     from models.users import User
@@ -21,7 +23,7 @@ class TableParticipant(SQLModel, table=True):
     session_id: uuid.UUID = Field(foreign_key="table_sessions.id", nullable=False)
     user_id: uuid.UUID | None = Field(foreign_key="users.id", default=None, nullable=True)
     joined_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
 

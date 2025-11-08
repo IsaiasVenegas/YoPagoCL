@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.invoices import Invoice
     from models.users import User
@@ -25,7 +27,7 @@ class Settlement(SQLModel, table=True):
     settlement_date: date = Field(nullable=False)
     payment_method: str | None = Field(default=None, max_length=50, nullable=True)
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
 

@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.table_participants import TableParticipant
     from models.order_items import OrderItem
@@ -23,7 +25,7 @@ class TableSession(SQLModel, table=True):
     restaurant_id: str = Field(foreign_key="restaurants.rut", nullable=False)
     table_id: uuid.UUID = Field(foreign_key="restaurant_tables.id", nullable=False)
     session_start: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
     session_end: datetime | None = Field(default=None, nullable=True)
@@ -31,7 +33,7 @@ class TableSession(SQLModel, table=True):
     total_amount: int | None = Field(default=None, nullable=True)
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     )
 

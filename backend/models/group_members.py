@@ -4,6 +4,8 @@ from sqlalchemy import Column, DateTime, func, UniqueConstraint
 from sqlmodel import SQLModel, Field, Relationship
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from models.groups import Group
     from models.users import User
@@ -20,7 +22,7 @@ class GroupMember(SQLModel, table=True):
     group_id: uuid.UUID = Field(foreign_key="groups.id", nullable=False)
     user_id: uuid.UUID = Field(foreign_key="users.id", nullable=False)
     joined_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
 
