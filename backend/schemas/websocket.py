@@ -27,6 +27,7 @@ class AssignItemMessage(BaseModel):
 class GetSelectableParticipantsMessage(BaseModel):
     type: Literal["get_selectable_participants"] = "get_selectable_participants"
     order_item_id: uuid.UUID
+    user_id: uuid.UUID
 
 class RemoveAssignmentMessage(BaseModel):
     type: Literal["remove_assignment"] = "remove_assignment"

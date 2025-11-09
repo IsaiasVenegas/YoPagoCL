@@ -66,7 +66,7 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
     
     handlers = {
         "join_session": lambda: handle_join_session(websocket, session_id, data, db),
-        "get_selectable_participants": lambda: handle_get_selectable_participants(websocket, data, db),
+        "get_selectable_participants": lambda: handle_get_selectable_participants(websocket, session_id, data, db),
         "assign_item": lambda: handle_assign_item(websocket, session_id, data, db),
         "remove_assignment": lambda: handle_remove_assignment(websocket, session_id, data, db),
         "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
@@ -214,7 +214,7 @@ def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, ne
     return new_amount_per_person
 
 
-async def handle_get_selectable_participants(websocket: WebSocket, data: dict, session_id: uuid.UUID, db: Session) -> list[TableParticipant]:
+async def handle_get_selectable_participants(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session) -> list[TableParticipant]:
     """
     Get the participants that can be selected as debtors for a given order item.
     If the user is already a debtor, they cannot be selected as a debtor again.
@@ -230,7 +230,7 @@ async def handle_get_selectable_participants(websocket: WebSocket, data: dict, s
     } | {
         assignment.debtor_id for assignment in assignments if assignment.debtor_id
     } | {
-        _websocket_participants.get(websocket, None)
+        msg.user_id
     }
     
     selectable_participants = [str(participant.user_id) for participant in participants if participant.id not in excluded_ids]
@@ -239,7 +239,7 @@ async def handle_get_selectable_participants(websocket: WebSocket, data: dict, s
     personal_message = SelectableParticipantsMessage(
         order_item_id=msg.order_item_id,
         selectable_participants=selectable_participants,
-        current_participant_id=str(_websocket_participants.get(websocket, None))
+        current_participant_id=str(msg.user_id)
     )
     await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
 
