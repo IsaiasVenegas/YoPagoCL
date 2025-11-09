@@ -12,7 +12,7 @@ import {
   Spinner,
   HStack,
 } from '@/components/ui';
-import { getAuthToken, apiService } from '@/services/api';
+import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
 
 export default function InvoiceDetailScreen() {
   const router = useRouter();
@@ -22,6 +22,8 @@ export default function InvoiceDetailScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [invoice, setInvoice] = useState<any>(null);
+  const [payingInvoice, setPayingInvoice] = useState(false);
+  const [markedAsPaidInCash, setMarkedAsPaidInCash] = useState(false);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -38,6 +40,15 @@ export default function InvoiceDetailScreen() {
     try {
       const invoiceData = await apiService.getInvoice(invoiceId);
       setInvoice(invoiceData);
+      // Check if invoice is paid and was marked as paid (not via wallet payment)
+      // We'll show "paid in cash" if the invoice is paid and we previously marked it
+      // For now, we'll show it if the invoice is paid and the user is the creditor
+      const user = getCurrentUser();
+      if (invoiceData.status === 'paid' && invoiceData.to_user === user?.id) {
+        // If user is the creditor and invoice is paid, it might have been marked as paid
+        // We'll keep the state if it was already set, or check wallet transactions
+        // For simplicity, we'll show it if markedAsPaidInCash is true
+      }
     } catch (error) {
       console.error('Failed to load invoice:', error);
       Alert.alert('Error', 'Failed to load invoice');
@@ -69,10 +80,11 @@ export default function InvoiceDetailScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Paid',
+          text: 'Mark as paid',
           onPress: async () => {
             try {
               await apiService.markInvoicePaid(invoiceId);
+              setMarkedAsPaidInCash(true);
               await loadInvoice();
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to mark invoice as paid');
@@ -82,6 +94,49 @@ export default function InvoiceDetailScreen() {
       ]
     );
   };
+
+  const handlePayInvoice = async () => {
+    if (!invoice) {
+      Alert.alert('Error', 'Invoice data not available');
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    // Check if user owes money (user is from_user/debtor)
+    if (invoice.from_user !== user.id) {
+      Alert.alert('Error', 'You do not owe money for this invoice');
+      return;
+    }
+
+    Alert.alert(
+      'Pay Invoice',
+      'Are you sure you want to pay this invoice? This will mark it as paid and create wallet transactions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay',
+          onPress: async () => {
+            try {
+              setPayingInvoice(true);
+              await apiService.markInvoicePaid(invoiceId);
+              await loadInvoice();
+              Alert.alert('Success', 'Invoice has been paid successfully!');
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to pay invoice');
+            } finally {
+              setPayingInvoice(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
 
   if (!isAuthenticated) {
     return null;
@@ -136,7 +191,9 @@ export default function InvoiceDetailScreen() {
                   {invoice.paid_at && (
                     <HStack space="md" style={{ justifyContent: 'space-between' }}>
                       <Text className="text-typography-700 font-medium">Paid At</Text>
-                      <Text className="text-success-600">{formatDate(invoice.paid_at)}</Text>
+                      <VStack space="xs" style={{ alignItems: 'flex-end' }}>
+                        <Text className="text-success-600">{formatDate(invoice.paid_at)}</Text>
+                      </VStack>
                     </HStack>
                   )}
 
@@ -178,16 +235,44 @@ export default function InvoiceDetailScreen() {
                 </VStack>
               </Box>
 
-              {invoice.status === 'pending' && (
-                <Button
-                  onPress={handleMarkPaid}
-                  action="primary"
-                  variant="solid"
-                  size="lg"
-                >
-                  <ButtonText>Mark as Paid</ButtonText>
-                </Button>
-              )}
+              {invoice.status === 'pending' && (() => {
+                const user = getCurrentUser();
+                const iOwe = invoice.from_user === user?.id; // I'm the debtor (I owe them)
+                const isOwed = invoice.to_user === user?.id; // I'm the creditor (they owe me)
+                
+                return (
+                  <VStack space="sm">
+                    {iOwe && (
+                      <Button
+                        onPress={handlePayInvoice}
+                        disabled={payingInvoice}
+                        action="primary"
+                        variant="solid"
+                        size="lg"
+                      >
+                        {payingInvoice ? (
+                          <>
+                            <Spinner size="small" />
+                            <ButtonText className="ml-2">Processing...</ButtonText>
+                          </>
+                        ) : (
+                          <ButtonText>Pay</ButtonText>
+                        )}
+                      </Button>
+                    )}
+                    {isOwed && (
+                      <Button
+                        onPress={handleMarkPaid}
+                        action="primary"
+                        variant="solid"
+                        size="lg"
+                      >
+                        <ButtonText>Mark as paid</ButtonText>
+                      </Button>
+                    )}
+                  </VStack>
+                );
+              })()}
 
               <Button
                 onPress={() => router.back()}

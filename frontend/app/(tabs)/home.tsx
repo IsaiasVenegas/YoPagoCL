@@ -134,16 +134,28 @@ export default function HomeScreen() {
                       <Text className="text-typography-600">
                         {pendingInvoices.length} invoice{pendingInvoices.length !== 1 ? 's' : ''} pending
                       </Text>
-                      {pendingInvoices.slice(0, 3).map((invoice) => (
-                        <Box key={invoice.id} className="bg-background-0 p-3 rounded border border-typography-200">
-                          <Text className="text-typography-900 font-medium">
-                            ${formatAmount(invoice.total_amount)} CLP
-                          </Text>
-                          <Text className="text-typography-600 text-sm">
-                            {invoice.status === 'pending' ? 'Pending payment' : invoice.status}
-                          </Text>
-                        </Box>
-                      ))}
+                      {pendingInvoices.slice(0, 3).map((invoice) => {
+                        const isOwed = invoice.to_user === user?.id; // I'm the creditor (they owe me)
+                        const iOwe = invoice.from_user === user?.id; // I'm the debtor (I owe them)
+                        const otherUserId = isOwed ? invoice.from_user : invoice.to_user;
+                        const otherUserName = invoice.from_user_rel?.name || invoice.to_user_rel?.name || 
+                                             invoice.from_user_rel?.email || invoice.to_user_rel?.email ||
+                                             `User ${otherUserId.substring(0, 8)}`;
+                        
+                        return (
+                          <Box key={invoice.id} className="bg-background-0 p-3 rounded border border-typography-200">
+                            <Text className="text-typography-900 font-medium">
+                              ${formatAmount(invoice.total_amount)} CLP
+                            </Text>
+                            <Text className="text-typography-600 text-sm">
+                              {isOwed ? `Owed by ${otherUserName}` : iOwe ? `Owe to ${otherUserName}` : 'Pending payment'}
+                            </Text>
+                            <Text className="text-typography-500 text-xs">
+                              {invoice.status === 'pending' ? 'Pending payment' : invoice.status}
+                            </Text>
+                          </Box>
+                        );
+                      })}
                     </VStack>
                   )}
                 </Box>

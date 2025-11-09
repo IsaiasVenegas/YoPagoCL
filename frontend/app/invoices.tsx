@@ -82,13 +82,35 @@ export default function InvoicesScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Paid',
+          text: 'Mark as paid',
           onPress: async () => {
             try {
               await apiService.markInvoicePaid(invoiceId);
               await loadInvoices();
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to mark invoice as paid');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePayInvoice = async (invoiceId: string) => {
+    Alert.alert(
+      'Pay Invoice',
+      'Are you sure you want to pay this invoice? This will mark it as paid and create wallet transactions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay',
+          onPress: async () => {
+            try {
+              await apiService.markInvoicePaid(invoiceId);
+              await loadInvoices();
+              Alert.alert('Success', 'Invoice has been paid successfully!');
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to pay invoice');
             }
           },
         },
@@ -183,69 +205,92 @@ export default function InvoicesScreen() {
               </Box>
             ) : (
               <VStack space="md">
-                {invoices.map((invoice) => (
-                  <TouchableOpacity
-                    key={invoice.id}
-                    onPress={() => router.push(`/invoices/${invoice.id}`)}
-                  >
-                    <Box className="bg-background-50 p-4 rounded-lg border border-typography-200">
-                      <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <VStack space="xs" className="flex-1">
-                          <HStack space="sm" style={{ alignItems: 'center' }}>
-                            <Heading size="md" className="text-typography-900">
-                              ${formatAmount(invoice.total_amount)} CLP
-                            </Heading>
-                            <Box
-                              className={`px-2 py-1 rounded ${
-                                invoice.status === 'paid'
-                                  ? 'bg-success-100'
-                                  : 'bg-warning-100'
-                              }`}
-                            >
-                              <Text
-                                className={`text-xs font-semibold ${
+                {invoices.map((invoice) => {
+                  const user = getCurrentUser();
+                  const isOwed = invoice.to_user === user?.id; // I'm the creditor (they owe me)
+                  const iOwe = invoice.from_user === user?.id; // I'm the debtor (I owe them)
+                  
+                  return (
+                    <TouchableOpacity
+                      key={invoice.id}
+                      onPress={() => router.push(`/invoices/${invoice.id}`)}
+                    >
+                      <Box className="bg-background-50 p-4 rounded-lg border border-typography-200">
+                        <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <VStack space="xs" className="flex-1">
+                            <HStack space="sm" style={{ alignItems: 'center' }}>
+                              <Heading size="md" className="text-typography-900">
+                                ${formatAmount(invoice.total_amount)} CLP
+                              </Heading>
+                              <Box
+                                className={`px-2 py-1 rounded ${
                                   invoice.status === 'paid'
-                                    ? 'text-success-700'
-                                    : 'text-warning-700'
+                                    ? 'bg-success-100'
+                                    : 'bg-warning-100'
                                 }`}
                               >
-                                {invoice.status.toUpperCase()}
+                                <Text
+                                  className={`text-xs font-semibold ${
+                                    invoice.status === 'paid'
+                                      ? 'text-success-700'
+                                      : 'text-warning-700'
+                                  }`}
+                                >
+                                  {invoice.status.toUpperCase()}
+                                </Text>
+                              </Box>
+                            </HStack>
+                            {invoice.created_at && (
+                              <Text className="text-typography-600 text-sm">
+                                Created: {formatDate(invoice.created_at)}
                               </Text>
-                            </Box>
-                          </HStack>
-                          {invoice.created_at && (
-                            <Text className="text-typography-600 text-sm">
-                              Created: {formatDate(invoice.created_at)}
-                            </Text>
+                            )}
+                            {invoice.paid_at && (
+                              <Text className="text-success-600 text-sm">
+                                Paid: {formatDate(invoice.paid_at)}
+                              </Text>
+                            )}
+                            {invoice.currency && (
+                              <Text className="text-typography-500 text-xs">
+                                Currency: {invoice.currency}
+                              </Text>
+                            )}
+                          </VStack>
+                          {invoice.status === 'pending' && (
+                            <VStack space="xs">
+                              {isOwed && (
+                                <Button
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleMarkPaid(invoice.id);
+                                  }}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-success-500"
+                                >
+                                  <ButtonText className="text-success-500">Mark as paid</ButtonText>
+                                </Button>
+                              )}
+                              {iOwe && (
+                                <Button
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handlePayInvoice(invoice.id);
+                                  }}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-primary-500"
+                                >
+                                  <ButtonText className="text-primary-500">Pay</ButtonText>
+                                </Button>
+                              )}
+                            </VStack>
                           )}
-                          {invoice.paid_at && (
-                            <Text className="text-success-600 text-sm">
-                              Paid: {formatDate(invoice.paid_at)}
-                            </Text>
-                          )}
-                          {invoice.currency && (
-                            <Text className="text-typography-500 text-xs">
-                              Currency: {invoice.currency}
-                            </Text>
-                          )}
-                        </VStack>
-                        {invoice.status === 'pending' && (
-                          <Button
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleMarkPaid(invoice.id);
-                            }}
-                            variant="outline"
-                            size="sm"
-                            className="border-success-500"
-                          >
-                            <ButtonText className="text-success-500">Mark Paid</ButtonText>
-                          </Button>
-                        )}
-                      </HStack>
-                    </Box>
-                  </TouchableOpacity>
-                ))}
+                        </HStack>
+                      </Box>
+                    </TouchableOpacity>
+                  );
+                })}
               </VStack>
             )}
           </VStack>
