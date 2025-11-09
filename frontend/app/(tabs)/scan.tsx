@@ -214,14 +214,20 @@ export default function ScanScreen() {
           };
         });
       } else if (message.type === 'participant_joined') {
+        console.log('[WebSocket] Received participant_joined message:', message);
         // Update session data to include the new participant
         setSessionData((prev) => {
-          if (!prev) return prev;
+          if (!prev) {
+            console.warn('[WebSocket] participant_joined: no previous session data');
+            return prev;
+          }
           // Check if participant already exists to prevent duplicates
           const exists = prev.participants.some((p) => p.id === message.participant_id);
           if (exists) {
+            console.log('[WebSocket] participant_joined: participant already exists, skipping');
             return prev;
           }
+          console.log('[WebSocket] participant_joined: adding new participant to state');
           return {
             ...prev,
             participants: [
