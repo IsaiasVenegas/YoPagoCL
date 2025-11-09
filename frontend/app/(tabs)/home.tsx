@@ -20,7 +20,6 @@ export default function HomeScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [wallet, setWallet] = useState<any>(null);
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
 
@@ -56,15 +55,7 @@ export default function HomeScreen() {
     }
 
     try {
-      // Load wallet separately to ensure it always loads even if other calls fail
-      try {
-        const walletData = await apiService.getUserWallet(user.id);
-        setWallet(walletData);
-      } catch (error) {
-        console.error('Failed to load wallet:', error);
-      }
-
-      // Load other data in parallel
+      // Load data in parallel
       try {
         const [invoicesData, groupsData] = await Promise.all([
           apiService.getUserPendingInvoices(user.id),
@@ -81,14 +72,6 @@ export default function HomeScreen() {
     }
   };
 
-  const formatBalance = (balance: number | null | undefined): string => {
-    if (balance === null || balance === undefined || isNaN(balance)) {
-      return '0';
-    }
-    const pesos = Math.floor(balance / 100);
-    return pesos.toLocaleString('es-CL');
-  };
-
   const formatAmount = (amount: number): string => {
     const pesos = Math.floor(amount / 100);
     return pesos.toLocaleString('es-CL');
@@ -99,10 +82,6 @@ export default function HomeScreen() {
   }
 
   const user = getCurrentUser();
-  
-  const balance = wallet && wallet.balance !== undefined && wallet.balance !== null 
-    ? formatBalance(wallet.balance) 
-    : '0';
   const totalPending = pendingInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
 
   return (
@@ -120,7 +99,7 @@ export default function HomeScreen() {
                 Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''}!
               </Heading>
               <Text className="text-typography-600 text-lg">
-                Here's your financial overview
+                Here's your general overview
               </Text>
             </VStack>
 
@@ -130,22 +109,6 @@ export default function HomeScreen() {
               </Box>
             ) : (
               <>
-                {/* Wallet Balance */}
-                <Box className="bg-primary-50 p-4 rounded-lg border-2 border-primary-200">
-                  <Text className="text-typography-600 mb-1">Wallet Balance</Text>
-                  <Heading size="2xl" className="text-primary-900">
-                    ${balance} CLP
-                  </Heading>
-                  <Button
-                    onPress={() => router.push('/settings')}
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 border-primary-600"
-                  >
-                    <ButtonText className="text-primary-700">Manage Wallet</ButtonText>
-                  </Button>
-                </Box>
-
                 {/* Pending Invoices */}
                 <Box className="bg-background-50 p-4 rounded-lg">
                   <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -233,35 +196,6 @@ export default function HomeScreen() {
                     </VStack>
                   )}
                 </Box>
-
-                {/* Quick Actions */}
-                <VStack space="sm" className="mt-4">
-                  <Heading size="lg" className="text-typography-900">
-                    Quick Actions
-                  </Heading>
-                  <Button
-                    onPress={() => router.push('/scan')}
-                    action="primary"
-                    variant="solid"
-                    size="lg"
-                  >
-                    <ButtonText>Scan QR Code</ButtonText>
-                  </Button>
-                  <Button
-                    onPress={() => router.push('/groups')}
-                    variant="outline"
-                    size="lg"
-                  >
-                    <ButtonText>Manage Groups</ButtonText>
-                  </Button>
-                  <Button
-                    onPress={() => router.push('/invoices')}
-                    variant="outline"
-                    size="lg"
-                  >
-                    <ButtonText>View Invoices</ButtonText>
-                  </Button>
-                </VStack>
               </>
             )}
           </VStack>

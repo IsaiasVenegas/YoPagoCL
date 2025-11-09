@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Settings, QrCode } from 'lucide-react-native';
+import { Home, Settings, QrCode, Wallet } from 'lucide-react-native';
 import { useColorScheme, View, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -89,6 +89,22 @@ export default function TabsLayout() {
               </View>
             );
           },
+        }}
+      />
+      <Tabs.Screen
+        name="wallet"
+        options={{
+          tabBarButton: (props) => (
+            <TouchableOpacity
+              {...props}
+              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Wallet
+                size={24}
+                color={props.accessibilityState?.selected ? activeIconColor : iconColor}
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
       <Tabs.Screen
