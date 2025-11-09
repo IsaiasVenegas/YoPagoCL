@@ -40,6 +40,7 @@ export default function ScanScreen() {
   const [scanned, setScanned] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const lastScannedDataRef = useRef<string | null>(null);
+  const isProcessingScanRef = useRef<boolean>(false);
   const [sessionData, setSessionData] = useState<SessionStateMessage | null>(
     null
   );
@@ -91,20 +92,24 @@ export default function ScanScreen() {
     setScanned(true);
     setSessionId(sessionId);
     setError(null);
+    isProcessingScanRef.current = true;
 
     const user = getCurrentUser();
     if (!user) {
       setError('User not found. Please login again.');
+      isProcessingScanRef.current = false;
       router.replace('/login');
       return;
     }
 
     try {
       await websocketService.connect(sessionId, user.id);
+      isProcessingScanRef.current = false;
     } catch (err: any) {
       setError(err.message || 'Failed to connect to session');
-      setScanned(false);
-      setSessionId(null);
+      // Don't reset scanned to false - keep it true to prevent camera from reopening
+      // User can manually rescan using the "Scan Another QR Code" button
+      isProcessingScanRef.current = false;
     }
   };
 
@@ -239,7 +244,8 @@ export default function ScanScreen() {
   }, [participantsModalVisible]);
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    if (scanned) return;
+    // Prevent multiple scans from being processed simultaneously
+    if (scanned || isProcessingScanRef.current) return;
 
     const trimmedData = data.trim();
     
@@ -248,6 +254,8 @@ export default function ScanScreen() {
       return;
     }
     
+    // Mark that we're processing a scan
+    isProcessingScanRef.current = true;
     lastScannedDataRef.current = trimmedData;
     let sessionId: string | null = null;
 
@@ -275,6 +283,7 @@ export default function ScanScreen() {
               setTimeout(() => {
                 setScanned(false);
                 lastScannedDataRef.current = null;
+                isProcessingScanRef.current = false;
               }, 1000);
             },
           },
@@ -292,6 +301,7 @@ export default function ScanScreen() {
     const user = getCurrentUser();
     if (!user) {
       setError('User not found. Please login again.');
+      isProcessingScanRef.current = false;
       router.replace('/login');
       return;
     }
@@ -301,10 +311,14 @@ export default function ScanScreen() {
       try {
         // Connect to websocket
         await websocketService.connect(sessionId, user.id);
+        // Only reset processing flag on successful connection
+        // If connection fails, keep scanned=true to prevent camera from reopening
+        isProcessingScanRef.current = false;
       } catch (err: any) {
         setError(err.message || 'Failed to connect to session');
-        setScanned(false);
-        setSessionId(null);
+        // Don't reset scanned to false - keep it true to prevent camera from reopening
+        // User can manually rescan using the "Scan Another QR Code" button
+        isProcessingScanRef.current = false;
       }
     }, 0);
   };
@@ -326,6 +340,7 @@ export default function ScanScreen() {
     lastScannedDataRef.current = null;
     setWsConnected(false);
     setError(null);
+    isProcessingScanRef.current = false;
     websocketService.disconnect();
   };
 
@@ -1374,7 +1389,7 @@ export default function ScanScreen() {
             ref={cameraRef}
             style={styles.camera}
             facing="back"
-            onBarcodeScanned={handleBarCodeScanned}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
             barcodeScannerSettings={{
               barcodeTypes: ['qr'],
             }}
@@ -1402,7 +1417,7 @@ export default function ScanScreen() {
         </Box>
       )}
 
-      {scanned && !wsConnected && (
+      {scanned && !wsConnected && !isProcessingScanRef.current && (
         <Box className="pt-4 pb-12">
           <VStack space="sm" className="items-center">
             <Spinner size="small" />
