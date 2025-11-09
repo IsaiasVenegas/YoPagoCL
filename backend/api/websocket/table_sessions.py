@@ -43,6 +43,9 @@ from schemas.websocket import (
     SessionStateMessage,
     SelectableParticipantsMessage,
     PayingForParticipantsMessage,
+    UnlockSessionMessage,
+    SessionLockedMessage,
+    SessionUnlockedMessage,
 )
 
 # Track websocket -> participant_id mapping
@@ -75,6 +78,7 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
         "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
         "request_summary": lambda: handle_request_summary(websocket, session_id, db),
         "validate_assignments": lambda: handle_validate_assignments(websocket, session_id, db),
+        "unlock_session": lambda: handle_unlock_session(websocket, session_id, db),
         "finalize_session": lambda: handle_finalize_session(websocket, session_id, db),
     }
     
@@ -136,7 +140,9 @@ async def send_session_state(websocket: WebSocket, session_id: uuid.UUID, db: Se
             "id": str(session.id),
             "status": session.status,
             "total_amount": session.total_amount,
-            "currency": session.currency
+            "currency": session.currency,
+            "locked": session.locked,
+            "locked_by_user_id": str(session.locked_by_user_id) if session.locked_by_user_id else None
         },
         participants=[{
             "id": str(p.id),
@@ -304,6 +310,15 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
     """Handle assign_item message."""
     print(f"[WebSocket] handle_assign_item called with data: {data}")
     try:
+        # Check if session is locked
+        session = db.get(TableSession, session_id)
+        if session and session.locked:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Session is locked. Assignments cannot be modified."
+            })
+            return
+        
         msg = AssignItemMessage(**data)
         print(f"[WebSocket] Parsed message: order_item_id={msg.order_item_id}, creditor_id={msg.creditor_id}, assigned_amount={msg.assigned_amount}")
         
@@ -401,6 +416,15 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
 async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Handle remove_assignment message."""
     try:
+        # Check if session is locked
+        session = db.get(TableSession, session_id)
+        if session and session.locked:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Session is locked. Assignments cannot be modified."
+            })
+            return
+        
         msg = RemoveAssignmentMessage(**data)
         
         assignment = get_assignment_by_id(db, msg.assignment_id)
@@ -536,6 +560,34 @@ async def handle_request_summary(websocket: WebSocket, session_id: uuid.UUID, db
 async def handle_validate_assignments(websocket: WebSocket, session_id: uuid.UUID, db: Session):
     """Handle validate_assignments message."""
     try:
+        # Get session
+        session = db.get(TableSession, session_id)
+        if not session:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Session not found"
+            })
+            return
+        
+        # Get user_id from websocket participant
+        participant_id = _websocket_participants.get(websocket)
+        if not participant_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": "User not found in session"
+            })
+            return
+        
+        participant = get_participant_by_id(db, participant_id)
+        if not participant or not participant.user_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Participant user not found"
+            })
+            return
+        
+        user_id = participant.user_id
+        
         # Get all order items
         order_items = get_order_items_by_session_id(db, session_id)
         
@@ -554,7 +606,13 @@ async def handle_validate_assignments(websocket: WebSocket, session_id: uuid.UUI
         
         all_assigned = len(unassigned_items) == 0 and total_assigned >= total_items
         
-        # Broadcast to all
+        # Lock the session
+        session.locked = True
+        session.locked_by_user_id = user_id
+        db.add(session)
+        db.commit()
+        
+        # Broadcast validation result
         broadcast_msg = AssignmentsValidatedMessage(
             all_assigned=all_assigned,
             unassigned_items=unassigned_items
@@ -563,11 +621,85 @@ async def handle_validate_assignments(websocket: WebSocket, session_id: uuid.UUI
             broadcast_msg.model_dump(mode='json'),
             session_id
         )
+        
+        # Broadcast lock message
+        lock_msg = SessionLockedMessage(locked_by_user_id=user_id)
+        await manager.broadcast_to_session(
+            lock_msg.model_dump(mode='json'),
+            session_id
+        )
     
     except Exception as e:
         await websocket.send_json({
             "type": "error",
             "message": f"Failed to validate assignments: {str(e)}"
+        })
+
+
+async def handle_unlock_session(websocket: WebSocket, session_id: uuid.UUID, db: Session):
+    """Handle unlock_session message."""
+    try:
+        # Get session
+        session = db.get(TableSession, session_id)
+        if not session:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Session not found"
+            })
+            return
+        
+        # Check if session is locked
+        if not session.locked:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Session is not locked"
+            })
+            return
+        
+        # Get user_id from websocket participant
+        participant_id = _websocket_participants.get(websocket)
+        if not participant_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": "User not found in session"
+            })
+            return
+        
+        participant = get_participant_by_id(db, participant_id)
+        if not participant or not participant.user_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Participant user not found"
+            })
+            return
+        
+        user_id = participant.user_id
+        
+        # Check if this user is the one who locked it
+        if session.locked_by_user_id != user_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Only the user who locked the session can unlock it"
+            })
+            return
+        
+        # Unlock the session
+        session.locked = False
+        session.locked_by_user_id = None
+        db.add(session)
+        db.commit()
+        
+        # Broadcast unlock message
+        unlock_msg = SessionUnlockedMessage()
+        await manager.broadcast_to_session(
+            unlock_msg.model_dump(mode='json'),
+            session_id
+        )
+    
+    except Exception as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Failed to unlock session: {str(e)}"
         })
 
 

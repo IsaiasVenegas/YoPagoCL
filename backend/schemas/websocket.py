@@ -54,6 +54,10 @@ class FinalizeSessionMessage(BaseModel):
     type: Literal["finalize_session"] = "finalize_session"
 
 
+class UnlockSessionMessage(BaseModel):
+    type: Literal["unlock_session"] = "unlock_session"
+
+
 # Outgoing messages
 class ParticipantJoinedMessage(BaseModel):
     type: Literal["participant_joined"] = "participant_joined"
@@ -128,4 +132,13 @@ class SessionStateMessage(BaseModel):
     participants: list[dict]
     order_items: list[dict]
     assignments: list[dict]
+
+
+class SessionLockedMessage(BaseModel):
+    type: Literal["session_locked"] = "session_locked"
+    locked_by_user_id: uuid.UUID
+
+
+class SessionUnlockedMessage(BaseModel):
+    type: Literal["session_unlocked"] = "session_unlocked"
 

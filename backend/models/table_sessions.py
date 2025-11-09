@@ -33,6 +33,8 @@ class TableSession(SQLModel, table=True):
     status: str = Field(default="active", max_length=20, nullable=False)  # active, closed, paid
     total_amount: int | None = Field(default=None, nullable=True)
     currency: str = Field(default="CLP", max_length=3, nullable=False)
+    locked: bool = Field(default=False, nullable=False)  # Whether assignments are locked
+    locked_by_user_id: uuid.UUID | None = Field(default=None, nullable=True)  # User who locked the session
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

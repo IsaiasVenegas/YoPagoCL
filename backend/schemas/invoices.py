@@ -51,3 +51,16 @@ class AvailableGroupsResponse(BaseModel):
 class InvoiceMarkPaid(BaseModel):
     paid_at: Optional[datetime] = None
 
+
+class BillPaymentRequest(BaseModel):
+    session_id: uuid.UUID
+    group_id: uuid.UUID
+    amount: int = Field(..., description="Total amount to pay in centavos")
+    currency: str = Field(default="CLP", max_length=3)
+
+
+class BillPaymentResponse(BaseModel):
+    payment_id: str
+    invoices: list[InvoiceResponse]
+    transbank_token: Optional[str] = None
+

@@ -45,3 +45,16 @@ class WalletTransactionCreate(BaseModel):
     currency: str = Field(default="CLP", max_length=3)
     description: Optional[str] = None
 
+
+class WalletTopUpRequest(BaseModel):
+    amount: int = Field(..., description="Amount in centavos to add to wallet")
+    currency: str = Field(default="CLP", max_length=3)
+
+
+class WalletTopUpResponse(BaseModel):
+    transaction_id: uuid.UUID
+    wallet_id: uuid.UUID
+    amount: int
+    balance: int
+    transbank_token: Optional[str] = None  # For Transbank integration
+
