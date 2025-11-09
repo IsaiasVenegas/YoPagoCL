@@ -1,6 +1,7 @@
 from typing import Optional, Literal
 from pydantic import BaseModel
 import uuid
+from models.table_participants import TableParticipant
 
 
 # WebSocket Message Types
@@ -23,11 +24,9 @@ class AssignItemMessage(BaseModel):
     assigned_amount: int  # Amount in centavos
 
 
-class UpdateAssignmentMessage(BaseModel):
-    type: Literal["update_assignment"] = "update_assignment"
-    assignment_id: uuid.UUID
-    assigned_amount: int
-
+class GetSelectableParticipantsMessage(BaseModel):
+    type: Literal["get_selectable_participants"] = "get_selectable_participants"
+    order_item_id: uuid.UUID
 
 class RemoveAssignmentMessage(BaseModel):
     type: Literal["remove_assignment"] = "remove_assignment"
@@ -71,6 +70,12 @@ class ItemAssignedMessage(BaseModel):
     debtor_id: Optional[uuid.UUID]
     assigned_amount: int
 
+
+class SelectableParticipantsMessage(BaseModel):
+    type: Literal["selectable_participants"] = "selectable_participants"
+    order_item_id: uuid.UUID
+    selectable_participants: list[TableParticipant]
+    current_participant_id: Optional[uuid.UUID]
 
 class AssignmentUpdatedMessage(BaseModel):
     type: Literal["assignment_updated"] = "assignment_updated"

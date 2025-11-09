@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
+from models.table_participants import TableParticipant
 from models.order_items import OrderItem
 from sqlmodel import Session
 
@@ -27,7 +28,7 @@ from crud.item_assignments import (
 from schemas.websocket import (
     JoinSessionMessage,
     AssignItemMessage,
-    UpdateAssignmentMessage,
+    GetSelectableParticipantsMessage,
     RemoveAssignmentMessage,
     ParticipantJoinedMessage,
     ParticipantLeftMessage,
@@ -39,6 +40,7 @@ from schemas.websocket import (
     AssignmentsValidatedMessage,
     SessionFinalizedMessage,
     SessionStateMessage,
+    SelectableParticipantsMessage,
 )
 
 # Track websocket -> participant_id mapping
@@ -64,6 +66,7 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
     
     handlers = {
         "join_session": lambda: handle_join_session(websocket, session_id, data, db),
+        "get_selectable_participants": lambda: handle_get_selectable_participants(websocket, data, db),
         "assign_item": lambda: handle_assign_item(websocket, session_id, data, db),
         "remove_assignment": lambda: handle_remove_assignment(websocket, session_id, data, db),
         "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
@@ -209,6 +212,36 @@ def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, ne
         return total_amount
     new_amount_per_person = total_amount // new_number_of_assignments
     return new_amount_per_person
+
+
+async def handle_get_selectable_participants(websocket: WebSocket, data: dict, session_id: uuid.UUID, db: Session) -> list[TableParticipant]:
+    """
+    Get the participants that can be selected as debtors for a given order item.
+    If the user is already a debtor, they cannot be selected as a debtor again.
+    If the user is already a creditor, they cannot be selected as a debtor.
+    The user that asks for the selectable participants cannot be selected as a debtor.
+    """
+    msg = GetSelectableParticipantsMessage(**data)
+    participants = get_participants_by_session_id(db, session_id)
+    assignments = get_assignments_by_order_item_id(db, msg.order_item_id)
+    
+    excluded_ids = {
+        assignment.creditor_id for assignment in assignments
+    } | {
+        assignment.debtor_id for assignment in assignments if assignment.debtor_id
+    } | {
+        _websocket_participants.get(websocket, None)
+    }
+    
+    selectable_participants = [str(participant.user_id) for participant in participants if participant.id not in excluded_ids]
+    
+    # Send the selectable participants to the user that asked for them
+    personal_message = SelectableParticipantsMessage(
+        order_item_id=msg.order_item_id,
+        selectable_participants=selectable_participants,
+        current_participant_id=str(_websocket_participants.get(websocket, None))
+    )
+    await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
 
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Handle assign_item message."""
