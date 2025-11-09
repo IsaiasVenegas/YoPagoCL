@@ -203,7 +203,11 @@ def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, ne
     """Get the new assignment amount for an order item."""
     total_amount = order_item.unit_price
     assignments = get_assignments_by_order_item_id(db, order_item.id)
-    new_amount_per_person = total_amount // (len(assignments) + (-1 if negative_adjustment else 1))
+    current_number_of_assignments = len(assignments)
+    new_number_of_assignments = current_number_of_assignments + (-1 if negative_adjustment else 1)
+    if new_number_of_assignments == 0:
+        return total_amount
+    new_amount_per_person = total_amount // new_number_of_assignments
     return new_amount_per_person
 
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
