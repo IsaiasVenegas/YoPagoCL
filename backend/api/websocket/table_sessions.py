@@ -217,11 +217,15 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
                 user_name=user_name,
                 user_avatar_url=user_avatar_url
             )
+            broadcast_data = broadcast_msg.model_dump(mode='json')
+            print(f"[WebSocket] Broadcasting participant_joined: {broadcast_data}")
+            print(f"[WebSocket] Active connections for session {session_id}: {len(manager.active_connections.get(session_id, set()))}")
             await manager.broadcast_to_session(
-                broadcast_msg.model_dump(mode='json'),
+                broadcast_data,
                 session_id,
                 exclude=websocket
             )
+            print(f"[WebSocket] participant_joined broadcast completed")
         else:
             # Track existing participant for this websocket
             _websocket_participants[websocket] = existing.id

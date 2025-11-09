@@ -45,18 +45,27 @@ class ConnectionManager:
         connections = list(self.active_connections[session_id])
         print(f"[ConnectionManager] Broadcasting to {len(connections)} connections (excluding {1 if exclude else 0})")
         
+        if len(connections) == 0:
+            print(f"[ConnectionManager] No connections to broadcast to")
+            return
+        
         disconnected = set()
+        sent_count = 0
         for connection in connections:
-            if connection == exclude:
+            # Use 'is' for identity comparison to ensure we're comparing the same object
+            if connection is exclude:
                 print(f"[ConnectionManager] Skipping excluded connection")
                 continue
             try:
-                print(f"[ConnectionManager] Sending message to connection: {message}")
+                print(f"[ConnectionManager] Sending message type '{message.get('type', 'unknown')}' to connection")
                 await connection.send_json(message)
-                print(f"[ConnectionManager] Message sent successfully")
+                sent_count += 1
+                print(f"[ConnectionManager] Message sent successfully ({sent_count}/{len(connections) - (1 if exclude else 0)})")
             except Exception as e:
                 print(f"[ConnectionManager] Error sending message: {e}")
                 disconnected.add(connection)
+        
+        print(f"[ConnectionManager] Broadcast completed: {sent_count} messages sent, {len(disconnected)} failed")
         
         # Clean up disconnected connections
         for conn in disconnected:
