@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
+from backend.models.order_items import OrderItem
 from sqlmodel import Session
 
 from api.websocket.manager import manager
@@ -16,6 +17,7 @@ from crud.order_items import (
     get_order_item_by_id
 )
 from crud.item_assignments import (
+    get_assignments_by_order_item_id,
     get_assignments_by_session_id,
     get_assignment_by_id,
     create_assignment,
@@ -63,7 +65,6 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
     handlers = {
         "join_session": lambda: handle_join_session(websocket, session_id, data, db),
         "assign_item": lambda: handle_assign_item(websocket, session_id, data, db),
-        "update_assignment": lambda: handle_update_assignment(websocket, session_id, data, db),
         "remove_assignment": lambda: handle_remove_assignment(websocket, session_id, data, db),
         "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
         "request_summary": lambda: handle_request_summary(websocket, session_id, db),
@@ -198,6 +199,15 @@ def _validate_assignment_belongs_to_session(order_item: OrderItem, session_id: u
     return True, None
 
 
+def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, increase_number_of_assignments: bool = True) -> int:
+    """Get the new assignment amount for an order item."""
+    total_amount = order_item.unit_price
+    assignments = get_assignments_by_order_item_id(db, order_item.id)
+    if len(assignments) == 0:
+        return total_amount
+    new_amount_per_person = total_amount // (len(assignments) + (1 if increase_number_of_assignments else -1))
+    return new_amount_per_person
+
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Handle assign_item message."""
     print(f"[WebSocket] handle_assign_item called with data: {data}")
@@ -232,16 +242,32 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
                     "message": "Debtor participant not found"
                 })
                 return
+
+        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db, True)
         
         assignment = create_assignment(
             db,
             msg.order_item_id,
             msg.creditor_id,
             msg.debtor_id,
-            msg.assigned_amount
+            new_assignment_amount_per_person
         )
-        
-        # Broadcast to all
+
+        # Update all assignments on the same order item
+        assignments = get_assignments_by_order_item_id(db, order_item.id)
+        for assignment in assignments:
+            update_assignment(db, assignment.id, new_assignment_amount_per_person)
+            # Broadcast to all
+            broadcast_msg = AssignmentUpdatedMessage(
+                assignment_id=assignment.id,
+                assigned_amount=assignment.assigned_amount
+            )
+            await manager.broadcast_to_session(
+                broadcast_msg.model_dump(mode='json'),
+                session_id
+            )
+
+        # Broadcast the new assignment to all
         broadcast_msg = ItemAssignedMessage(
             assignment_id=assignment.id,
             order_item_id=assignment.order_item_id,
@@ -258,48 +284,6 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
         await websocket.send_json({
             "type": "error",
             "message": f"Failed to assign item: {str(e)}"
-        })
-
-
-async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
-    """Handle update_assignment message."""
-    try:
-        msg = UpdateAssignmentMessage(**data)
-        
-        assignment = get_assignment_by_id(db, msg.assignment_id)
-        if not assignment:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Assignment not found"
-            })
-            return
-        
-        # Verify assignment belongs to session
-        order_item = get_order_item_by_id(db, assignment.order_item_id)
-        belongs_to_session, error_msg = _validate_assignment_belongs_to_session(order_item, session_id)
-        if not belongs_to_session:
-            await websocket.send_json({
-                "type": "error",
-                "message": error_msg
-            })
-            return
-        
-        assignment = update_assignment(db, msg.assignment_id, msg.assigned_amount)
-        
-        # Broadcast to all
-        broadcast_msg = AssignmentUpdatedMessage(
-            assignment_id=assignment.id,
-            assigned_amount=assignment.assigned_amount
-        )
-        await manager.broadcast_to_session(
-            broadcast_msg.model_dump(mode='json'),
-            session_id
-        )
-    
-    except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": f"Failed to update assignment: {str(e)}"
         })
 
 
@@ -328,7 +312,23 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
         
         delete_assignment(db, msg.assignment_id)
         print(f"[WebSocket] Assignment {msg.assignment_id} deleted from database")
-        
+
+        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db, False)
+
+        # Update all assignments on the same order item
+        assignments = get_assignments_by_order_item_id(db, order_item.id)
+        for assignment in assignments:
+            update_assignment(db, assignment.id, new_assignment_amount_per_person)
+            # Broadcast to all
+            broadcast_msg = AssignmentUpdatedMessage(
+                assignment_id=assignment.id,
+                assigned_amount=assignment.assigned_amount
+            )
+            await manager.broadcast_to_session(
+                broadcast_msg.model_dump(mode='json'),
+                session_id
+            )
+            
         # Broadcast to all (including sender so they get the update too)
         broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
         # Use model_dump with mode='json' to ensure UUIDs are serialized as strings

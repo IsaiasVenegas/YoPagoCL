@@ -24,6 +24,16 @@ def get_assignment_by_id(
     """Get an item assignment by its ID."""
     return db.get(ItemAssignment, assignment_id)
 
+def get_assignments_by_order_item_id(
+    db: Session,
+    order_item_id: uuid.UUID
+) -> list[ItemAssignment]:
+    """Get all item assignments for an order item."""
+    return db.exec(
+        select(ItemAssignment)
+        .where(ItemAssignment.order_item_id == order_item_id)
+    ).all()
+
 
 def create_assignment(
     db: Session,
