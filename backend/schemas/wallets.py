@@ -19,7 +19,7 @@ class WalletResponse(BaseModel):
 class WalletTransactionResponse(BaseModel):
     id: uuid.UUID
     wallet_id: uuid.UUID
-    settlement_id: Optional[uuid.UUID]
+    invoice_id: Optional[uuid.UUID]
     type: str
     amount: int
     currency: str
@@ -39,7 +39,7 @@ class WalletWithTransactionsResponse(WalletResponse):
 
 class WalletTransactionCreate(BaseModel):
     wallet_id: uuid.UUID
-    settlement_id: Optional[uuid.UUID] = None
+    invoice_id: Optional[uuid.UUID] = None
     type: str = Field(..., description="payment_sent, payment_received, deposit, withdrawal")
     amount: int = Field(..., description="Amount in centavos")
     currency: str = Field(default="CLP", max_length=3)
