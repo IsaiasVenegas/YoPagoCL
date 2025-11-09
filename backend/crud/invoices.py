@@ -9,6 +9,28 @@ from models.table_participants import TableParticipant
 from schemas.invoices import InvoiceCreate, InvoiceUpdate, InvoiceMarkPaid
 
 
+def validate_user_in_group(
+    db: Session,
+    group_id: uuid.UUID,
+    user_id: uuid.UUID
+) -> tuple[bool, Optional[str]]:
+    """Validate that a user is in the group. Returns (is_valid, error_message)."""
+    # Import here to avoid circular dependency
+    from models.group_members import GroupMember
+    
+    member = db.exec(
+        select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == user_id
+        )
+    ).first()
+    
+    if not member:
+        return False, f"User {user_id} is not a member of group {group_id}"
+    
+    return True, None
+
+
 def validate_users_in_group(
     db: Session,
     group_id: uuid.UUID,
@@ -16,28 +38,15 @@ def validate_users_in_group(
     to_user: uuid.UUID
 ) -> tuple[bool, Optional[str]]:
     """Validate that both users are in the group. Returns (is_valid, error_message)."""
-    # Import here to avoid circular dependency
-    from models.group_members import GroupMember
+    # Validate from_user
+    is_valid, error_message = validate_user_in_group(db, group_id, from_user)
+    if not is_valid:
+        return False, error_message
     
-    from_member = db.exec(
-        select(GroupMember).where(
-            GroupMember.group_id == group_id,
-            GroupMember.user_id == from_user
-        )
-    ).first()
-    
-    if not from_member:
-        return False, f"User {from_user} is not a member of group {group_id}"
-    
-    to_member = db.exec(
-        select(GroupMember).where(
-            GroupMember.group_id == group_id,
-            GroupMember.user_id == to_user
-        )
-    ).first()
-    
-    if not to_member:
-        return False, f"User {to_user} is not a member of group {group_id}"
+    # Validate to_user
+    is_valid, error_message = validate_user_in_group(db, group_id, to_user)
+    if not is_valid:
+        return False, error_message
     
     return True, None
 

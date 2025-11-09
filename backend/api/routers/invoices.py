@@ -124,7 +124,7 @@ async def pay_bill(
     from models.restaurants import Restaurant
     
     logging.info(f"[Pay Bill] Request received for user: {current_user.id}")
-    logging.info(f"[Pay Bill] Amount: {payment_data.amount} centavos")
+    logging.info(f"[Pay Bill] Amount: {payment_data.amount} CLP")
     
     # Get session and restaurant
     session = db.get(TableSession, payment_data.session_id)
@@ -166,11 +166,11 @@ async def pay_bill(
         creditor_user_id = creditor_participant.user_id
         total_creditor_amount = sum(a.assigned_amount for a in creditor_assigns)
         
-        logging.info(f"[Pay Bill] Processing creditor {creditor_user_id} with {len(creditor_assigns)} assignments, total: {total_creditor_amount} centavos")
+        logging.info(f"[Pay Bill] Processing creditor {creditor_user_id} with {len(creditor_assigns)} assignments, total: {total_creditor_amount} CLP")
         
-        # Validate creditor is in group
-        is_valid, error_message = crud_invoices.validate_users_in_group(
-            db, payment_data.group_id, creditor_user_id, restaurant_admin_id
+        # Validate creditor is in group (restaurant admin doesn't need to be in group)
+        is_valid, error_message = crud_invoices.validate_user_in_group(
+            db, payment_data.group_id, creditor_user_id
         )
         if not is_valid:
             logging.warning(f"[Pay Bill] Skipping creditor {creditor_user_id}: {error_message}")
@@ -193,7 +193,7 @@ async def pay_bill(
         # se deben crear las transacciones wallet correspondientes, y marcar el invoice como "pagado"
         crud_invoices.mark_invoice_paid(db, invoice_to_admin.id, datetime.now())
         created_invoices.append(invoice_to_admin)
-        logging.info(f"[Pay Bill] Created and marked as paid invoice {invoice_to_admin.id} from creditor {creditor_user_id} to admin for {total_creditor_amount} centavos")
+        logging.info(f"[Pay Bill] Created and marked as paid invoice {invoice_to_admin.id} from creditor {creditor_user_id} to admin for {total_creditor_amount} CLP")
         
         # 3. Por cada assignment en que exista un deudor, crea un invoice "from" deudor "to" acreedor
         for assignment in creditor_assigns:
@@ -228,7 +228,7 @@ async def pay_bill(
                 invoice_debtor_to_creditor = crud_invoices.create_invoice(db, invoice_debtor_to_creditor_data)
                 # Note: This invoice is NOT marked as paid - it remains pending
                 created_invoices.append(invoice_debtor_to_creditor)
-                logging.info(f"[Pay Bill] Created pending invoice {invoice_debtor_to_creditor.id} from debtor {debtor_user_id} to creditor {creditor_user_id} for {assignment.assigned_amount} centavos")
+                logging.info(f"[Pay Bill] Created pending invoice {invoice_debtor_to_creditor.id} from debtor {debtor_user_id} to creditor {creditor_user_id} for {assignment.assigned_amount} CLP")
     
     # Commit all changes
     db.commit()
