@@ -47,17 +47,18 @@ async def _cleanup_participant(websocket: WebSocket, session_id: uuid.UUID):
     """Clean up participant tracking and broadcast leave message."""
     participant_id = _websocket_participants.pop(websocket, None)
     if participant_id:
-        broadcast_msg = ParticipantLeftMessage(participant_id=participant_id)
-        await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
-            session_id,
-            exclude=websocket
-        )
+            broadcast_msg = ParticipantLeftMessage(participant_id=participant_id)
+            await manager.broadcast_to_session(
+                broadcast_msg.model_dump(mode='json'),
+                session_id,
+                exclude=websocket
+            )
 
 
 async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Route incoming message to appropriate handler."""
     message_type = data.get("type")
+    print(f"[WebSocket] Received message type: {message_type}, data: {data}")
     
     handlers = {
         "join_session": lambda: handle_join_session(websocket, session_id, data, db),
@@ -74,6 +75,7 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
     if handler:
         await handler()
     else:
+        print(f"[WebSocket] Unknown message type: {message_type}")
         await websocket.send_json({
             "type": "error",
             "message": f"Unknown message type: {message_type}"
@@ -149,7 +151,7 @@ async def send_session_state(websocket: WebSocket, session_id: uuid.UUID, db: Se
         } for a in assignments]
     )
     
-    await websocket.send_json(message.model_dump())
+    await websocket.send_json(message.model_dump(mode='json'))
 
 
 async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
@@ -173,7 +175,7 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
                 joined_at=participant.joined_at.isoformat()
             )
             await manager.broadcast_to_session(
-                broadcast_msg.model_dump(),
+                broadcast_msg.model_dump(mode='json'),
                 session_id,
                 exclude=websocket
             )
@@ -189,8 +191,10 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
 
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Handle assign_item message."""
+    print(f"[WebSocket] handle_assign_item called with data: {data}")
     try:
         msg = AssignItemMessage(**data)
+        print(f"[WebSocket] Parsed message: order_item_id={msg.order_item_id}, creditor_id={msg.creditor_id}, assigned_amount={msg.assigned_amount}")
         
         # Verify order item belongs to session
         order_item = get_order_item_by_id(db, msg.order_item_id)
@@ -236,7 +240,7 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
             assigned_amount=assignment.assigned_amount
         )
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
@@ -277,7 +281,7 @@ async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             assigned_amount=assignment.assigned_amount
         )
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
@@ -311,13 +315,20 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             return
         
         delete_assignment(db, msg.assignment_id)
+        print(f"[WebSocket] Assignment {msg.assignment_id} deleted from database")
         
-        # Broadcast to all
+        # Broadcast to all (including sender so they get the update too)
         broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
+        # Use model_dump with mode='json' to ensure UUIDs are serialized as strings
+        broadcast_data = broadcast_msg.model_dump(mode='json')
+        print(f"[WebSocket] Broadcasting assignment_removed: {broadcast_data}")
+        print(f"[WebSocket] Active connections for session {session_id}: {len(manager.active_connections.get(session_id, set()))}")
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
-            session_id
+            broadcast_data,
+            session_id,
+            exclude=None  # Include sender so they get the update
         )
+        print(f"[WebSocket] assignment_removed broadcast completed")
     
     except Exception as e:
         await websocket.send_json({
@@ -360,7 +371,7 @@ async def handle_calculate_equal_split(websocket: WebSocket, session_id: uuid.UU
             amount_per_person=amount_per_person
         )
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
@@ -387,7 +398,7 @@ async def handle_request_summary(websocket: WebSocket, session_id: uuid.UUID, db
         # Broadcast to all
         broadcast_msg = SummaryUpdatedMessage(summary=summary)
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
@@ -425,7 +436,7 @@ async def handle_validate_assignments(websocket: WebSocket, session_id: uuid.UUI
             unassigned_items=unassigned_items
         )
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
@@ -461,7 +472,7 @@ async def handle_finalize_session(websocket: WebSocket, session_id: uuid.UUID, d
             ready_for_invoices=True
         )
         await manager.broadcast_to_session(
-            broadcast_msg.model_dump(),
+            broadcast_msg.model_dump(mode='json'),
             session_id
         )
     
