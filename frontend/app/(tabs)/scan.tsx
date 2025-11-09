@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StyleSheet, View, Alert, TouchableOpacity, ScrollView, Modal, Animated, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Box,
   VStack,
@@ -654,37 +655,41 @@ export default function ScanScreen() {
   if (!permission) {
     // Camera permissions are still loading
     return (
-      <Box className="flex-1 bg-background-0 p-6">
-        <VStack space="lg" className="flex-1 justify-center items-center">
-          <Spinner size="large" />
-          <Text className="text-typography-600">Loading camera...</Text>
-        </VStack>
-      </Box>
+      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
+        <Box className="flex-1 bg-background-0 p-6">
+          <VStack space="lg" className="flex-1 justify-center items-center">
+            <Spinner size="large" />
+            <Text className="text-typography-600">Loading camera...</Text>
+          </VStack>
+        </Box>
+      </SafeAreaView>
     );
   }
 
   if (!permission.granted) {
     // Camera permission not granted
     return (
-      <Box className="flex-1 bg-background-0 p-6">
-        <VStack space="lg" className="flex-1 justify-center items-center">
-          <Heading size="2xl" className="text-typography-900">
-            Camera Permission Required
-          </Heading>
-          <Text className="text-typography-600 text-lg text-center">
-            We need access to your camera to scan QR codes.
-          </Text>
-          <Button
-            onPress={handleRequestPermission}
-            action="primary"
-            variant="solid"
-            size="lg"
-            className="mt-4"
-          >
-            <ButtonText>Grant Camera Permission</ButtonText>
-          </Button>
-        </VStack>
-      </Box>
+      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
+        <Box className="flex-1 bg-background-0 p-6">
+          <VStack space="lg" className="flex-1 justify-center items-center">
+            <Heading size="2xl" className="text-typography-900">
+              Camera Permission Required
+            </Heading>
+            <Text className="text-typography-600 text-lg text-center">
+              We need access to your camera to scan QR codes.
+            </Text>
+            <Button
+              onPress={handleRequestPermission}
+              action="primary"
+              variant="solid"
+              size="lg"
+              className="mt-4"
+            >
+              <ButtonText>Grant Camera Permission</ButtonText>
+            </Button>
+          </VStack>
+        </Box>
+      </SafeAreaView>
     );
   }
 
@@ -692,7 +697,8 @@ export default function ScanScreen() {
   if (sessionId && wsConnected && sessionData) {
 
     return (
-      <Box className="flex-1 bg-background-0 p-6">
+      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
+        <Box className="flex-1 bg-background-0 p-6">
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           <VStack space="lg" className="flex-1">
             <VStack space="md">
@@ -1004,10 +1010,6 @@ export default function ScanScreen() {
                   <Text className="text-typography-700 font-semibold">
                     Session Status: {sessionData.session.status}
                   </Text>
-                  <Text className="text-typography-600">
-                    Total Amount: {sessionData.session.total_amount / 100}{' '}
-                    {sessionData.session.currency}
-                  </Text>
                   {currentParticipantId && (
                     <Text className="text-typography-700 font-semibold mt-2">
                       Your Total: {getUserTotal / 100} {sessionData.session.currency}
@@ -1256,13 +1258,15 @@ export default function ScanScreen() {
             </Animated.View>
           </View>
         </Modal>
-      </Box>
+        </Box>
+      </SafeAreaView>
     );
   }
 
   // Show camera scanner
   return (
-    <Box className="flex-1 bg-background-0">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
+      <Box className="flex-1 bg-background-0">
       <View style={styles.container}>
         <CameraView
           ref={cameraRef}
@@ -1303,7 +1307,8 @@ export default function ScanScreen() {
           </VStack>
         </Box>
       )}
-    </Box>
+      </Box>
+    </SafeAreaView>
   );
 }
 

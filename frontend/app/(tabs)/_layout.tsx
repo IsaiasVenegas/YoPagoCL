@@ -1,9 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Home, Settings, QrCode } from 'lucide-react-native';
 import { useColorScheme, View, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const iconColor = colorScheme === 'dark' ? '#D4D4D4' : '#737373';
   const activeIconColor = '#8C52FF'; // primary-500
 
@@ -17,8 +19,8 @@ export default function TabsLayout() {
           backgroundColor: colorScheme === 'dark' ? '#181719' : '#FBFBFB',
           borderTopWidth: 1,
           borderTopColor: colorScheme === 'dark' ? '#262626' : '#E5E5E5',
-          height: 80,
-          paddingBottom: 8,
+          height: 50 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8,
           position: 'relative',
           overflow: 'visible',
