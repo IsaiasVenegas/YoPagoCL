@@ -354,6 +354,20 @@ export default function ScanScreen() {
     return assignmentMap;
   }, [sessionData, currentParticipantId]);
 
+  // Get total amount for current user (includes all assignments where user is creditor)
+  const getUserTotal = useMemo(() => {
+    if (!sessionData || !currentParticipantId) {
+      return 0;
+    }
+    
+    // Sum all assignments where current user is the creditor (regardless of debtor_id)
+    const total = sessionData.assignments
+      .filter(assignment => assignment.creditor_id === currentParticipantId)
+      .reduce((sum, assignment) => sum + assignment.assigned_amount, 0);
+    
+    return total;
+  }, [sessionData, currentParticipantId]);
+
   // Get all assignments grouped by item (for display)
   const getAllAssignmentsByItem = useMemo(() => {
     if (!sessionData) return new Map();
@@ -411,7 +425,7 @@ export default function ScanScreen() {
     setMenuModalVisible(true);
   };
 
-  // Handle "Pagar por otro usuario" option
+  // Handle "Pay for other user" option
   const handlePayForOthers = async () => {
     if (!selectedItemId || !currentParticipantId || !sessionData) {
       setError('Unable to get selectable participants');
@@ -630,10 +644,6 @@ export default function ScanScreen() {
 
   // If session is connected, show session data
   if (sessionId && wsConnected && sessionData) {
-    const userTotal = Array.from(getUserAssignments.values()).reduce(
-      (sum, assignment) => sum + assignment.totalAmount,
-      0
-    );
 
     return (
       <Box className="flex-1 bg-background-0 p-6">
@@ -947,7 +957,7 @@ export default function ScanScreen() {
                   </Text>
                   {currentParticipantId && (
                     <Text className="text-typography-700 font-semibold mt-2">
-                      Your Total: {userTotal / 100} {sessionData.session.currency}
+                      Your Total: {getUserTotal / 100} {sessionData.session.currency}
                     </Text>
                   )}
                 </VStack>
@@ -995,7 +1005,7 @@ export default function ScanScreen() {
                   variant="outline"
                   size="md"
                 >
-                  <ButtonText>Pagar por otro usuario</ButtonText>
+                  <ButtonText>Pay for other user</ButtonText>
                 </Button>
                 <Button
                   onPress={() => setMenuModalVisible(false)}
@@ -1003,7 +1013,7 @@ export default function ScanScreen() {
                   variant="outline"
                   size="md"
                 >
-                  <ButtonText>Cancelar</ButtonText>
+                  <ButtonText>Cancel</ButtonText>
                 </Button>
               </VStack>
             </TouchableOpacity>
@@ -1126,7 +1136,7 @@ export default function ScanScreen() {
                       variant="outline"
                       size="md"
                     >
-                      <ButtonText>Cancelar</ButtonText>
+                      <ButtonText>Cancel</ButtonText>
                     </Button>
                     <Button
                       onPress={handleAcceptParticipants}
@@ -1135,7 +1145,7 @@ export default function ScanScreen() {
                       size="md"
                       isDisabled={selectedParticipants.size === 0 || loadingParticipants}
                     >
-                      <ButtonText>Aceptar</ButtonText>
+                      <ButtonText>Accept</ButtonText>
                     </Button>
                   </HStack>
                 </View>
