@@ -78,14 +78,22 @@ export default function SettingsScreen() {
   };
 
   const handleAvatarPress = () => {
+    const options: any[] = [
+      { text: 'Camera', onPress: pickImageFromCamera },
+      { text: 'Photo Library', onPress: pickImageFromLibrary },
+    ];
+    
+    // Only show "Remove Avatar" option if user has an avatar
+    if (user?.avatar_url) {
+      options.push({ text: 'Remove Avatar', onPress: removeAvatar, style: 'destructive' });
+    }
+    
+    options.push({ text: 'Cancel', style: 'cancel' });
+    
     Alert.alert(
       'Change Avatar',
       'Choose an option',
-      [
-        { text: 'Camera', onPress: pickImageFromCamera },
-        { text: 'Photo Library', onPress: pickImageFromLibrary },
-        { text: 'Cancel', style: 'cancel' },
-      ],
+      options,
       { cancelable: true }
     );
   };
@@ -152,6 +160,24 @@ export default function SettingsScreen() {
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       Alert.alert('Error', error.message || 'Failed to upload avatar');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    try {
+      setUploadingAvatar(true);
+      const updatedUser = await apiService.updateCurrentUser({
+        avatar_url: null,
+      });
+      setUser(updatedUser);
+      setCurrentUser(updatedUser);
+      setAvatarTimestamp(Date.now()); // Update timestamp to force image refresh
+      Alert.alert('Success', 'Avatar removed successfully');
+    } catch (error: any) {
+      console.error('Error removing avatar:', error);
+      Alert.alert('Error', error.message || 'Failed to remove avatar');
     } finally {
       setUploadingAvatar(false);
     }

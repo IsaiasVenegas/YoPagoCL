@@ -230,7 +230,7 @@ class ApiService {
     });
   }
 
-  async updateCurrentUser(data: { name?: string; phone?: string }): Promise<User> {
+  async updateCurrentUser(data: { name?: string; phone?: string; avatar_url?: string | null }): Promise<User> {
     return this.request('/api/auth/users/me', {
       method: 'PUT',
       body: JSON.stringify(data),
