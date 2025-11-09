@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -23,7 +23,6 @@ export default function WalletScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -42,25 +41,28 @@ export default function WalletScreen() {
     }
   }, []);
 
-  const loadWallet = async (showLoading = false) => {
+  // Reload data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const token = getAuthToken();
+      if (token && isAuthenticated) {
+        // Clear any previous status messages when tab is focused
+        setStatus('idle');
+        setStatusMessage('');
+        loadWallet();
+        loadTransactions();
+      }
+    }, [isAuthenticated])
+  );
+
+  const loadWallet = async () => {
     const user = getCurrentUser();
     if (user) {
-      if (showLoading) {
-        setRefreshing(true);
-      }
       try {
         const walletData = await apiService.getUserWallet(user.id);
         setWallet(walletData);
       } catch (error) {
         console.error('Failed to load wallet:', error);
-        if (showLoading) {
-          setStatus('error');
-          setStatusMessage('Failed to refresh wallet balance');
-        }
-      } finally {
-        if (showLoading) {
-          setRefreshing(false);
-        }
       }
     }
   };
@@ -170,23 +172,9 @@ export default function WalletScreen() {
                 </VStack>
 
                 <VStack space="md" className="mt-4">
-                  <HStack space="md" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Heading size="lg" className="text-typography-900">
-                      Balance
-                    </Heading>
-                    <Button
-                      onPress={() => loadWallet(true)}
-                      disabled={refreshing}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {refreshing ? (
-                        <Spinner size="small" />
-                      ) : (
-                        <ButtonText>Refresh</ButtonText>
-                      )}
-                    </Button>
-                  </HStack>
+                  <Heading size="lg" className="text-typography-900">
+                    Balance
+                  </Heading>
                   <Box className="bg-background-50 p-4 rounded-lg">
                     <Text className="text-typography-600 mb-1">Current Balance</Text>
                     <Text className="text-typography-900 text-2xl font-bold">
@@ -226,23 +214,9 @@ export default function WalletScreen() {
 
                 {/* Transactions History */}
                 <VStack space="md" className="mt-6">
-                  <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Heading size="lg" className="text-typography-900">
-                      Recent Transactions
-                    </Heading>
-                    <Button
-                      onPress={loadTransactions}
-                      disabled={loadingTransactions}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {loadingTransactions ? (
-                        <Spinner size="small" />
-                      ) : (
-                        <ButtonText>Refresh</ButtonText>
-                      )}
-                    </Button>
-                  </HStack>
+                  <Heading size="lg" className="text-typography-900">
+                    Recent Transactions
+                  </Heading>
 
                   {loadingTransactions ? (
                     <Box className="items-center py-4">
