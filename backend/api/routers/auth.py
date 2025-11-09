@@ -320,8 +320,11 @@ async def update_current_user(
     Returns:
         Updated user information
     """
+    # Get only fields that were explicitly set in the request
+    update_data = user_update.model_dump(exclude_unset=True)
+    
     # If avatar_url is being set to None, delete the old avatar file
-    if user_update.avatar_url is None and current_user.avatar_url:
+    if "avatar_url" in update_data and update_data["avatar_url"] is None and current_user.avatar_url:
         avatars_dir = Path(__file__).parent.parent.parent / "avatars"
         old_filename = current_user.avatar_url.split("/")[-1]
         old_avatar_path = avatars_dir / old_filename
@@ -331,12 +334,15 @@ async def update_current_user(
             except Exception:
                 pass  # Ignore errors when deleting old avatar
     
+    # Import the sentinel to pass NOT_PROVIDED for fields not in update_data
+    from crud.auth import NOT_PROVIDED
+    
     updated_user = update_user(
         db=db,
         user=current_user,
-        name=user_update.name,
-        phone=user_update.phone,
-        avatar_url=user_update.avatar_url
+        name=update_data.get("name", NOT_PROVIDED),
+        phone=update_data.get("phone", NOT_PROVIDED),
+        avatar_url=update_data.get("avatar_url", NOT_PROVIDED)
     )
     
     return UserResponse(

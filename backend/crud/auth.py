@@ -3,6 +3,10 @@ from sqlmodel import select, Session
 from models.users import User
 from core.security import get_password_hash, verify_password
 
+# Sentinel value to distinguish "not provided" from "explicitly set to None"
+# Made public so it can be imported by routers
+NOT_PROVIDED = object()
+
 
 def get_or_create_user_from_oauth(
     db: Session,
@@ -93,27 +97,27 @@ def authenticate_user(
 def update_user(
     db: Session,
     user: User,
-    name: str | None = None,
-    phone: str | None = None,
-    avatar_url: str | None = None
+    name: str | None = NOT_PROVIDED,
+    phone: str | None = NOT_PROVIDED,
+    avatar_url: str | None = NOT_PROVIDED
 ) -> User:
     """Update user information.
     
     Args:
         db: Database session
         user: User to update
-        name: New name (optional)
-        phone: New phone (optional)
-        avatar_url: New avatar URL (optional)
+        name: New name (optional, pass None to keep unchanged)
+        phone: New phone (optional, pass None to keep unchanged)
+        avatar_url: New avatar URL (optional, pass None to delete avatar)
     
     Returns:
         Updated user
     """
-    if name is not None:
+    if name is not NOT_PROVIDED:
         user.name = name
-    if phone is not None:
+    if phone is not NOT_PROVIDED:
         user.phone = phone
-    if avatar_url is not None:
+    if avatar_url is not NOT_PROVIDED:
         user.avatar_url = avatar_url
     
     db.add(user)
