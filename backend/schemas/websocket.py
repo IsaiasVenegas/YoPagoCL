@@ -28,6 +28,11 @@ class GetSelectableParticipantsMessage(BaseModel):
     order_item_id: uuid.UUID
     user_id: uuid.UUID
 
+class GetPayingForParticipantsMessage(BaseModel):
+    type: Literal["get_paying_for_participants"] = "get_paying_for_participants"
+    order_item_id: uuid.UUID
+    user_id: uuid.UUID
+
 class RemoveAssignmentMessage(BaseModel):
     type: Literal["remove_assignment"] = "remove_assignment"
     assignment_id: uuid.UUID
@@ -75,6 +80,11 @@ class SelectableParticipantsMessage(BaseModel):
     type: Literal["selectable_participants"] = "selectable_participants"
     order_item_id: uuid.UUID
     selectable_participants: list[str]
+
+class PayingForParticipantsMessage(BaseModel):
+    type: Literal["paying_for_participants"] = "paying_for_participants"
+    order_item_id: uuid.UUID
+    paying_for_participants: list[str]  # List of user_ids that the current user is paying for
 
 class AssignmentUpdatedMessage(BaseModel):
     type: Literal["assignment_updated"] = "assignment_updated"

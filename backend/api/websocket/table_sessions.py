@@ -29,6 +29,7 @@ from schemas.websocket import (
     JoinSessionMessage,
     AssignItemMessage,
     GetSelectableParticipantsMessage,
+    GetPayingForParticipantsMessage,
     RemoveAssignmentMessage,
     ParticipantJoinedMessage,
     ParticipantLeftMessage,
@@ -41,6 +42,7 @@ from schemas.websocket import (
     SessionFinalizedMessage,
     SessionStateMessage,
     SelectableParticipantsMessage,
+    PayingForParticipantsMessage,
 )
 
 # Track websocket -> participant_id mapping
@@ -67,6 +69,7 @@ async def _handle_message(websocket: WebSocket, session_id: uuid.UUID, data: dic
     handlers = {
         "join_session": lambda: handle_join_session(websocket, session_id, data, db),
         "get_selectable_participants": lambda: handle_get_selectable_participants(websocket, session_id, data, db),
+        "get_paying_for_participants": lambda: handle_get_paying_for_participants(websocket, session_id, data, db),
         "assign_item": lambda: handle_assign_item(websocket, session_id, data, db),
         "remove_assignment": lambda: handle_remove_assignment(websocket, session_id, data, db),
         "calculate_equal_split": lambda: handle_calculate_equal_split(websocket, session_id, db),
@@ -251,6 +254,49 @@ async def handle_get_selectable_participants(websocket: WebSocket, session_id: u
     personal_message = SelectableParticipantsMessage(
         order_item_id=msg.order_item_id,
         selectable_participants=selectable_participants,
+    )
+    await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
+
+
+async def handle_get_paying_for_participants(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
+    """
+    Get the participants that the current user is currently paying for in a specific order item.
+    Returns a list of user_ids of participants where the current user is the creditor
+    and there is a debtor assigned for the given order_item_id.
+    """
+    msg = GetPayingForParticipantsMessage(**data)
+    
+    # Get the current user's participant_id
+    current_user_participant = get_participant_by_session_and_user(db, session_id, msg.user_id)
+    if not current_user_participant:
+        # If user is not a participant, return empty list
+        personal_message = PayingForParticipantsMessage(
+            order_item_id=msg.order_item_id,
+            paying_for_participants=[]
+        )
+        await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
+        return
+    
+    # Get all assignments for this specific order item
+    assignments = get_assignments_by_order_item_id(db, msg.order_item_id)
+    
+    # Find assignments where current user is the creditor and there is a debtor
+    paying_for_debtor_ids = set()
+    for assignment in assignments:
+        if assignment.creditor_id == current_user_participant.id and assignment.debtor_id is not None:
+            paying_for_debtor_ids.add(assignment.debtor_id)
+    
+    # Get the participants for these debtor_ids and extract their user_ids
+    paying_for_participants = []
+    for debtor_id in paying_for_debtor_ids:
+        participant = get_participant_by_id(db, debtor_id)
+        if participant and participant.user_id is not None:
+            paying_for_participants.append(str(participant.user_id))
+    
+    # Send the participants that the user is paying for
+    personal_message = PayingForParticipantsMessage(
+        order_item_id=msg.order_item_id,
+        paying_for_participants=paying_for_participants,
     )
     await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
 
