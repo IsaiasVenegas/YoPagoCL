@@ -418,6 +418,59 @@ export default function ScanScreen() {
     return assignmentMap;
   }, [sessionData]);
 
+  // Helper to calculate payment breakdown for an item
+  const getItemPaymentBreakdown = (orderItemId: string) => {
+    if (!sessionData || !currentParticipantId) {
+      return {
+        youPayingForYourself: 0,
+        youPayingForOthers: 0,
+        othersPayingForYou: 0,
+        othersPayingForOthers: 0,
+      };
+    }
+
+    const allAssignments = getAllAssignmentsByItem.get(orderItemId);
+    if (!allAssignments) {
+      return {
+        youPayingForYourself: 0,
+        youPayingForOthers: 0,
+        othersPayingForYou: 0,
+        othersPayingForOthers: 0,
+      };
+    }
+
+    let youPayingForYourself = 0;
+    let youPayingForOthers = 0;
+    let othersPayingForYou = 0;
+    let othersPayingForOthers = 0;
+
+    allAssignments.assignments.forEach((assignment) => {
+      const isYouCreditor = assignment.creditor_id === currentParticipantId;
+      const isYouDebtor = assignment.debtor_id === currentParticipantId;
+
+      if (isYouCreditor && assignment.debtor_id === null) {
+        // You paying for yourself
+        youPayingForYourself += assignment.amount;
+      } else if (isYouCreditor && assignment.debtor_id !== null) {
+        // You paying for others
+        youPayingForOthers += assignment.amount;
+      } else if (isYouDebtor) {
+        // Others paying for you
+        othersPayingForYou += assignment.amount;
+      } else {
+        // Others paying for others
+        othersPayingForOthers += assignment.amount;
+      }
+    });
+
+    return {
+      youPayingForYourself,
+      youPayingForOthers,
+      othersPayingForYou,
+      othersPayingForOthers,
+    };
+  };
+
   // Helper to get participant info by ID
   const getParticipantInfo = (participantId: string) => {
     if (!sessionData) return null;
@@ -776,6 +829,18 @@ export default function ScanScreen() {
                       const myAssignment = getUserAssignments.get(item.id);
                       const allAssignments = getAllAssignmentsByItem.get(item.id);
                       const isAssignedByAnyone = !!allAssignments && allAssignments.totalAmount > 0;
+                      const paymentBreakdown = getItemPaymentBreakdown(item.id);
+                      
+                      // Determine border style based on payment scenarios
+                      const hasYouPayingForYourself = paymentBreakdown.youPayingForYourself > 0;
+                      const hasYouPayingForOthers = paymentBreakdown.youPayingForOthers > 0;
+                      const hasOthersPayingForYou = paymentBreakdown.othersPayingForYou > 0;
+                      
+                      // Border and background colors only change if user checked it themselves
+                      let borderClass = 'bg-background-0 border-typography-400';
+                      if (hasYouPayingForYourself) {
+                        borderClass = 'bg-primary-50 border-primary-600';
+                      }
                       
                       return (
                         <View key={item.id} style={{ marginBottom: 8 }}>
@@ -786,17 +851,13 @@ export default function ScanScreen() {
                             activeOpacity={0.7}
                           >
                             <HStack
-                              className={`p-3 rounded-lg border-2 ${
-                                isAssignedByMe
-                                  ? 'bg-primary-50 border-primary-600'
-                                  : 'bg-background-0 border-typography-400'
-                              }`}
+                              className={`p-3 rounded-lg border-2 ${borderClass}`}
                               style={{ alignItems: 'center', gap: 12 }}
                             >
                               {/* Toggle on the left */}
                               <View
                                 className={`w-6 h-6 rounded-full border-2 ${
-                                  isAssignedByMe
+                                  hasYouPayingForYourself
                                     ? 'bg-primary-500 border-primary-600'
                                     : 'bg-transparent border-typography-400'
                                 }`}
@@ -807,7 +868,7 @@ export default function ScanScreen() {
                                 }}
                                 pointerEvents="none"
                               >
-                                {isAssignedByMe && (
+                                {hasYouPayingForYourself && (
                                   <Text className="text-white text-xs font-bold">✓</Text>
                                 )}
                               </View>
@@ -816,7 +877,13 @@ export default function ScanScreen() {
                               <VStack className="flex-1" space="xs">
                                 <Text
                                   className={`font-semibold ${
-                                    isAssignedByMe ? 'text-primary-900' : 'text-typography-900'
+                                    hasYouPayingForYourself || hasYouPayingForOthers
+                                      ? hasYouPayingForYourself
+                                        ? 'text-primary-900'
+                                        : 'text-info-900'
+                                      : hasOthersPayingForYou
+                                      ? 'text-success-900'
+                                      : 'text-typography-900'
                                   }`}
                                 >
                                   {item.item_name}
@@ -833,32 +900,37 @@ export default function ScanScreen() {
                                   
                                   return (
                                     <>
-                                      {isAssignedByMe && myAssignment && (
-                                        <Text className="text-primary-700 text-sm">
-                                          You: {myAssignment.totalAmount / 100}{' '}
-                                          {sessionData.session.currency}
-                                          {myAssignment.ids.length > 1 && ` (${myAssignment.ids.length} assignments)`}
-                                        </Text>
-                                      )}
-                                      {isAssignedByAnyone && allAssignments && !isAssignedByMe && (
-                                        <Text className="text-typography-600 text-sm">
-                                          Assigned by others: {allAssignments.totalAmount / 100}{' '}
+                                      {paymentBreakdown.youPayingForYourself > 0 && (
+                                        <Text className="text-primary-700 text-sm font-medium">
+                                          You're paying for yourself: {paymentBreakdown.youPayingForYourself / 100}{' '}
                                           {sessionData.session.currency}
                                         </Text>
                                       )}
-                                      {isAssignedByMe && allAssignments && allAssignments.totalAmount > myAssignment!.totalAmount && (
+                                      {paymentBreakdown.youPayingForOthers > 0 && (
+                                        <Text className="text-info-700 text-sm font-medium">
+                                          You're paying for others: {paymentBreakdown.youPayingForOthers / 100}{' '}
+                                          {sessionData.session.currency}
+                                        </Text>
+                                      )}
+                                      {paymentBreakdown.othersPayingForYou > 0 && (
+                                        <Text className="text-success-700 text-sm font-medium">
+                                          Others are paying for you: {paymentBreakdown.othersPayingForYou / 100}{' '}
+                                          {sessionData.session.currency}
+                                        </Text>
+                                      )}
+                                      {paymentBreakdown.othersPayingForOthers > 0 && (
                                         <Text className="text-typography-600 text-sm">
-                                          Others: {(allAssignments.totalAmount - myAssignment!.totalAmount) / 100}{' '}
+                                          Others: {paymentBreakdown.othersPayingForOthers / 100}{' '}
                                           {sessionData.session.currency}
                                         </Text>
                                       )}
                                       <Text 
                                         className={`text-sm font-semibold ${
                                           isFullyCovered 
-                                            ? 'text-green-600' 
+                                            ? 'text-success-600' 
                                             : remaining < item.unit_price * 0.1 
-                                            ? 'text-orange-600'
-                                            : 'text-red-600'
+                                            ? 'text-warning-600'
+                                            : 'text-error-600'
                                         }`}
                                       >
                                         {isFullyCovered 
@@ -1086,8 +1158,9 @@ export default function ScanScreen() {
                   action="primary"
                   variant="outline"
                   size="md"
+                  className="border-info-600"
                 >
-                  <ButtonText>Pay for other user</ButtonText>
+                  <ButtonText className="text-info-700">Pay for other user</ButtonText>
                 </Button>
                 <Button
                   onPress={() => setMenuModalVisible(false)}
@@ -1169,7 +1242,7 @@ export default function ScanScreen() {
                                 onPress={() => handleParticipantToggle(userId)}
                                 className={`p-4 rounded-lg border-2 ${
                                   isSelected
-                                    ? 'bg-primary-50 border-primary-600'
+                                    ? 'bg-info-50 border-info-600'
                                     : 'bg-background-0 border-typography-400'
                                 }`}
                               >
@@ -1180,7 +1253,7 @@ export default function ScanScreen() {
                                   <View
                                     className={`w-6 h-6 rounded border-2 ${
                                       isSelected
-                                        ? 'bg-primary-500 border-primary-600'
+                                        ? 'bg-info-500 border-info-600'
                                         : 'bg-transparent border-typography-400'
                                     }`}
                                     style={{
@@ -1197,7 +1270,7 @@ export default function ScanScreen() {
                                   <Text
                                     className={`${
                                       isSelected
-                                        ? 'text-primary-900 font-semibold'
+                                        ? 'text-info-900 font-semibold'
                                         : 'text-typography-900'
                                     }`}
                                   >
@@ -1218,7 +1291,7 @@ export default function ScanScreen() {
                                   onPress={() => handleParticipantToggle(userId)}
                                   className={`p-4 rounded-lg border-2 ${
                                     isSelected
-                                      ? 'bg-primary-50 border-primary-600'
+                                      ? 'bg-info-50 border-info-600'
                                       : 'bg-background-0 border-typography-400'
                                   }`}
                                 >
@@ -1229,7 +1302,7 @@ export default function ScanScreen() {
                                     <View
                                       className={`w-6 h-6 rounded border-2 ${
                                         isSelected
-                                          ? 'bg-primary-500 border-primary-600'
+                                          ? 'bg-info-500 border-info-600'
                                           : 'bg-transparent border-typography-400'
                                       }`}
                                       style={{
@@ -1246,7 +1319,7 @@ export default function ScanScreen() {
                                     <Text
                                       className={`${
                                         isSelected
-                                          ? 'text-primary-900 font-semibold'
+                                          ? 'text-info-900 font-semibold'
                                           : 'text-typography-900'
                                       }`}
                                     >
@@ -1273,11 +1346,12 @@ export default function ScanScreen() {
                     <Button
                       onPress={handleAcceptParticipants}
                       action="primary"
-                      variant="solid"
+                      variant="outline"
                       size="md"
                       isDisabled={loadingParticipants}
+                      className="border-info-600"
                     >
-                      <ButtonText>Accept</ButtonText>
+                      <ButtonText className="text-info-700">Accept</ButtonText>
                     </Button>
                   </HStack>
                 </View>
