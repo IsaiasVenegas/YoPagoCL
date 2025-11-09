@@ -194,7 +194,7 @@ export default function GroupsScreen() {
                   action="primary"
                   variant="solid"
                 >
-                  <ButtonText>Create Your First Group</ButtonText>
+                  <ButtonText>Create your first group</ButtonText>
                 </Button>
               </Box>
             ) : (
@@ -233,17 +233,6 @@ export default function GroupsScreen() {
                               className="border-primary-500"
                             >
                               <ButtonText className="text-primary-500">Edit</ButtonText>
-                            </Button>
-                            <Button
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                handleDeleteGroup(group.id, group.name, group.created_by);
-                              }}
-                              variant="outline"
-                              size="sm"
-                              className="border-error-500"
-                            >
-                              <ButtonText className="text-error-500">Delete</ButtonText>
                             </Button>
                           </HStack>
                         )}

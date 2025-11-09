@@ -236,16 +236,6 @@ export default function GroupDetailScreen() {
                               </Text>
                             )}
                           </VStack>
-                          {member.user_id !== currentUser?.id && (
-                            <Button
-                              onPress={() => handleRemoveMember(member.user_id, member.user?.name || 'Member')}
-                              variant="outline"
-                              size="sm"
-                              className="border-error-500"
-                            >
-                              <ButtonText className="text-error-500">Remove</ButtonText>
-                            </Button>
-                          )}
                         </HStack>
                       </Box>
                     ))}

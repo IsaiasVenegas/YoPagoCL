@@ -59,8 +59,6 @@ export default function HomeScreen() {
       // Load wallet separately to ensure it always loads even if other calls fail
       try {
         const walletData = await apiService.getUserWallet(user.id);
-        console.log('[Home] Wallet data loaded:', walletData);
-        console.log('[Home] Wallet balance:', walletData?.balance);
         setWallet(walletData);
       } catch (error) {
         console.error('Failed to load wallet:', error);
@@ -101,13 +99,6 @@ export default function HomeScreen() {
   }
 
   const user = getCurrentUser();
-  
-  // Debug logging
-  if (wallet) {
-    console.log('[Home] Rendering with wallet:', wallet);
-    console.log('[Home] Wallet balance value:', wallet.balance);
-    console.log('[Home] Wallet balance type:', typeof wallet.balance);
-  }
   
   const balance = wallet && wallet.balance !== undefined && wallet.balance !== null 
     ? formatBalance(wallet.balance) 
