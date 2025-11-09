@@ -225,21 +225,32 @@ async def handle_get_selectable_participants(websocket: WebSocket, session_id: u
     participants = get_participants_by_session_id(db, session_id)
     assignments = get_assignments_by_order_item_id(db, msg.order_item_id)
     
-    excluded_ids = {
+    # Get the current user's participant_id to exclude them
+    current_user_participant = get_participant_by_session_and_user(db, session_id, msg.user_id)
+    current_user_participant_id = current_user_participant.id if current_user_participant else None
+    
+    # Exclude participant_ids that are already creditors or debtors
+    excluded_participant_ids = {
         assignment.creditor_id for assignment in assignments
     } | {
         assignment.debtor_id for assignment in assignments if assignment.debtor_id
-    } | {
-        msg.user_id
     }
     
-    selectable_participants = [str(participant.user_id) for participant in participants if participant.id not in excluded_ids]
+    # Also exclude the current user's participant_id
+    if current_user_participant_id:
+        excluded_participant_ids.add(current_user_participant_id)
+    
+    # Filter participants and return their user_ids as strings
+    selectable_participants = [
+        str(participant.user_id) 
+        for participant in participants 
+        if participant.id not in excluded_participant_ids and participant.user_id is not None
+    ]
     
     # Send the selectable participants to the user that asked for them
     personal_message = SelectableParticipantsMessage(
         order_item_id=msg.order_item_id,
         selectable_participants=selectable_participants,
-        current_participant_id=str(msg.user_id)
     )
     await manager.send_personal_message(personal_message.model_dump(mode='json'), websocket)
 

@@ -74,8 +74,7 @@ class ItemAssignedMessage(BaseModel):
 class SelectableParticipantsMessage(BaseModel):
     type: Literal["selectable_participants"] = "selectable_participants"
     order_item_id: uuid.UUID
-    selectable_participants: list[str]  # List of user_id strings
-    current_participant_id: Optional[str] = None
+    selectable_participants: list[str]
 
 class AssignmentUpdatedMessage(BaseModel):
     type: Literal["assignment_updated"] = "assignment_updated"
