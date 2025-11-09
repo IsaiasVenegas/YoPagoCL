@@ -313,18 +313,30 @@ async def update_current_user(
     """Update current user information.
     
     Args:
-        user_update: User information to update (name, phone)
+        user_update: User information to update (name, phone, avatar_url)
         current_user: Current authenticated user
         db: Database session
     
     Returns:
         Updated user information
     """
+    # If avatar_url is being set to None, delete the old avatar file
+    if user_update.avatar_url is None and current_user.avatar_url:
+        avatars_dir = Path(__file__).parent.parent.parent / "avatars"
+        old_filename = current_user.avatar_url.split("/")[-1]
+        old_avatar_path = avatars_dir / old_filename
+        if old_avatar_path.exists():
+            try:
+                old_avatar_path.unlink()
+            except Exception:
+                pass  # Ignore errors when deleting old avatar
+    
     updated_user = update_user(
         db=db,
         user=current_user,
         name=user_update.name,
-        phone=user_update.phone
+        phone=user_update.phone,
+        avatar_url=user_update.avatar_url
     )
     
     return UserResponse(

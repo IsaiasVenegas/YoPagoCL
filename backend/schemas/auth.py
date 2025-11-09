@@ -52,4 +52,5 @@ class UserUpdateRequest(BaseModel):
     """Request to update user information."""
     name: str | None = None
     phone: str | None = None
+    avatar_url: str | None = None
 
