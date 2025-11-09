@@ -848,6 +848,7 @@ export default function ScanScreen() {
                                       (() => {
                                         const assignment = allAssignments.assignments[0];
                                         const isCurrentUser = assignment.creditor_id === currentParticipantId;
+                                        const isCurrentUserDebtor = assignment.debtor_id === currentParticipantId;
                                         return (
                                           <View style={{ position: 'relative' }}>
                                             <Avatar
@@ -866,8 +867,8 @@ export default function ScanScreen() {
                                                   position: 'absolute',
                                                   bottom: -2,
                                                   right: -2,
-                                                  borderWidth: 1,
-                                                  borderColor: '#fff',
+                                                  borderWidth: isCurrentUserDebtor ? 2 : 1,
+                                                  borderColor: isCurrentUserDebtor ? '#4F46E5' : '#fff',
                                                 }}
                                               />
                                             )}
@@ -880,6 +881,7 @@ export default function ScanScreen() {
                                         {(() => {
                                           const firstAssignment = allAssignments.assignments[0];
                                           const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
+                                          const isCurrentUserDebtor = firstAssignment.debtor_id === currentParticipantId;
                                           return (
                                             <View style={{ position: 'relative' }}>
                                               <Avatar
@@ -898,8 +900,8 @@ export default function ScanScreen() {
                                                     position: 'absolute',
                                                     bottom: -2,
                                                     right: -2,
-                                                    borderWidth: 1,
-                                                    borderColor: '#fff',
+                                                    borderWidth: isCurrentUserDebtor ? 2 : 1,
+                                                    borderColor: isCurrentUserDebtor ? '#4F46E5' : '#fff',
                                                   }}
                                                 />
                                               )}
@@ -952,6 +954,7 @@ export default function ScanScreen() {
                               <HStack space="xs" style={{ flexWrap: 'wrap' }}>
                                 {allAssignments.assignments.map((assignment, index) => {
                                   const isCurrentUser = assignment.creditor_id === currentParticipantId;
+                                  const isCurrentUserDebtor = assignment.debtor_id === currentParticipantId;
                                   return (
                                     <HStack
                                       key={`${assignment.creditor_id}-${assignment.debtor_id || 'null'}-${index}`}
@@ -975,8 +978,8 @@ export default function ScanScreen() {
                                               position: 'absolute',
                                               bottom: -2,
                                               right: -6,
-                                              borderWidth: 1,
-                                              borderColor: '#fff',
+                                              borderWidth: isCurrentUserDebtor ? 2 : 1,
+                                              borderColor: isCurrentUserDebtor ? '#4F46E5' : '#fff',
                                               marginRight: 4,
                                             }}
                                           />
