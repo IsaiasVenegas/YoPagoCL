@@ -153,20 +153,42 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private connectionTimeout: number = 10000; // 10 seconds default timeout
+  private connectionTimeoutId: NodeJS.Timeout | null = null;
+  private connectionPromise: Promise<void> | null = null;
+  private connectionResolve: (() => void) | null = null;
+  private connectionReject: ((error: Error) => void) | null = null;
+  private wasConnected: boolean = false; // Track if connection was ever established
   private listeners: Set<(message: WebSocketMessage) => void> = new Set();
   private onConnectCallbacks: Set<() => void> = new Set();
   private onDisconnectCallbacks: Set<() => void> = new Set();
   private onErrorCallbacks: Set<(error: Error) => void> = new Set();
 
-  connect(sessionId: string, userId: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+  connect(sessionId: string, userId: string, timeout?: number): Promise<void> {
+    // If already connecting to the same session, return the existing promise
+    if (this.connectionPromise && this.sessionId === sessionId) {
+      return this.connectionPromise;
+    }
+
+    // Clear any existing connection attempt
+    this.cancelConnection();
+
+    const connectionTimeout = timeout ?? this.connectionTimeout;
+    this.sessionId = sessionId;
+
+    this.connectionPromise = new Promise((resolve, reject) => {
+      this.connectionResolve = resolve;
+      this.connectionReject = reject;
+      this.wasConnected = false;
+
       if (this.ws?.readyState === WebSocket.OPEN && this.sessionId === sessionId) {
+        this.clearConnectionTimeout();
+        this.wasConnected = true;
         resolve();
         return;
       }
 
       this.disconnect();
-      this.sessionId = sessionId;
 
       const url = getWebSocketUrl(`/api/ws/table_sessions/${sessionId}`);
       const token = getAuthToken();
@@ -176,10 +198,24 @@ export class WebSocketService {
       // If auth is required, we might need to pass token as query param
       const wsUrl = token ? `${url}?token=${token}` : url;
 
+      // Set up connection timeout
+      this.connectionTimeoutId = setTimeout(() => {
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+        const timeoutError = new Error(`WebSocket connection timeout after ${connectionTimeout}ms`);
+        this.onErrorCallbacks.forEach((cb) => cb(timeoutError));
+        this.cleanupConnection();
+        reject(timeoutError);
+      }, connectionTimeout);
+
       try {
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
+          this.clearConnectionTimeout();
+          this.wasConnected = true;
           this.reconnectAttempts = 0;
           this.onConnectCallbacks.forEach((cb) => cb());
           
@@ -192,6 +228,7 @@ export class WebSocketService {
             this.send(joinMessage);
           }
           
+          this.cleanupConnection();
           resolve();
         };
 
@@ -205,20 +242,24 @@ export class WebSocketService {
         };
 
         this.ws.onerror = (error) => {
+          this.clearConnectionTimeout();
           const err = new Error('WebSocket connection error');
           this.onErrorCallbacks.forEach((cb) => cb(err));
+          this.cleanupConnection();
           reject(err);
         };
 
         this.ws.onclose = (event) => {
+          this.clearConnectionTimeout();
           this.onDisconnectCallbacks.forEach((cb) => cb());
           
-          // Attempt to reconnect if not a normal closure
-          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+          // Only attempt to reconnect if connection was successfully established before
+          // Don't reconnect on initial connection timeout or if connection was cancelled
+          if (this.wasConnected && event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             setTimeout(() => {
               if (this.sessionId && userId) {
-                this.connect(this.sessionId, userId).catch(() => {
+                this.connect(this.sessionId, userId, timeout).catch(() => {
                   // Reconnection failed, will be handled by error callbacks
                 });
               }
@@ -226,18 +267,58 @@ export class WebSocketService {
           }
         };
       } catch (error) {
+        this.clearConnectionTimeout();
+        this.cleanupConnection();
         reject(error);
       }
     });
+
+    return this.connectionPromise;
+  }
+
+  private clearConnectionTimeout() {
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+  }
+
+  private cleanupConnection() {
+    this.clearConnectionTimeout();
+    this.connectionPromise = null;
+    this.connectionResolve = null;
+    this.connectionReject = null;
+    // Don't reset wasConnected here - it's needed for reconnection logic
+  }
+
+  cancelConnection() {
+    if (this.connectionTimeoutId) {
+      this.clearConnectionTimeout();
+    }
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+      this.ws.close();
+      this.ws = null;
+    }
+    if (this.connectionReject) {
+      const cancelError = new Error('WebSocket connection cancelled');
+      this.connectionReject(cancelError);
+    }
+    this.cleanupConnection();
+  }
+
+  setConnectionTimeout(timeout: number) {
+    this.connectionTimeout = timeout;
   }
 
   disconnect() {
+    this.cancelConnection();
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
     this.sessionId = null;
     this.reconnectAttempts = 0;
+    this.wasConnected = false;
   }
 
   send(message: OutgoingWebSocketMessage) {

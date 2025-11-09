@@ -39,6 +39,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const lastScannedDataRef = useRef<string | null>(null);
   const [sessionData, setSessionData] = useState<SessionStateMessage | null>(
     null
   );
@@ -241,6 +242,13 @@ export default function ScanScreen() {
     if (scanned) return;
 
     const trimmedData = data.trim();
+    
+    // Prevent showing the same error multiple times for the same QR code
+    if (lastScannedDataRef.current === trimmedData) {
+      return;
+    }
+    
+    lastScannedDataRef.current = trimmedData;
     let sessionId: string | null = null;
 
     // Only accept deeplink URL format: yopagocl://session/{session_id}
@@ -254,9 +262,23 @@ export default function ScanScreen() {
     }
 
     if (!sessionId) {
+      // Set scanned to true temporarily to prevent multiple alerts
+      setScanned(true);
       Alert.alert(
         'Invalid QR Code',
-        'The scanned QR code must be in the format: yopagocl://session/{session_id}'
+        'The scanned QR code must be in the format: yopagocl://session/{session_id}',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset after a short delay to allow scanning again
+              setTimeout(() => {
+                setScanned(false);
+                lastScannedDataRef.current = null;
+              }, 1000);
+            },
+          },
+        ]
       );
       return;
     }
@@ -264,6 +286,7 @@ export default function ScanScreen() {
     setScanned(true);
     setSessionId(sessionId);
     setError(null);
+    lastScannedDataRef.current = null; // Reset for valid QR codes
 
     // Get current user
     const user = getCurrentUser();
@@ -273,14 +296,17 @@ export default function ScanScreen() {
       return;
     }
 
-    try {
-      // Connect to websocket
-      await websocketService.connect(sessionId, user.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect to session');
-      setScanned(false);
-      setSessionId(null);
-    }
+    // Defer websocket connection to allow React to render the "Connecting" state first
+    setTimeout(async () => {
+      try {
+        // Connect to websocket
+        await websocketService.connect(sessionId, user.id);
+      } catch (err: any) {
+        setError(err.message || 'Failed to connect to session');
+        setScanned(false);
+        setSessionId(null);
+      }
+    }, 0);
   };
 
   const handleRequestPermission = async () => {
@@ -297,6 +323,7 @@ export default function ScanScreen() {
     setScanned(false);
     setSessionId(null);
     setSessionData(null);
+    lastScannedDataRef.current = null;
     setWsConnected(false);
     setError(null);
     websocketService.disconnect();
@@ -1267,29 +1294,31 @@ export default function ScanScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
       <Box className="flex-1 bg-background-0">
-      <View style={styles.container}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          barcodeScannerSettings={{
-            barcodeTypes: ['qr'],
-          }}
-        >
-          <View style={styles.overlay}>
-            <View style={styles.scanArea}>
-              <View style={styles.corner} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
+      {!scanned && (
+        <View style={styles.container}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            facing="back"
+            onBarcodeScanned={handleBarCodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+          >
+            <View style={styles.overlay}>
+              <View style={styles.scanArea}>
+                <View style={styles.corner} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+              <Text className="text-white text-center mt-4 text-lg font-semibold">
+                Position QR code within the frame
+              </Text>
             </View>
-            <Text className="text-white text-center mt-4 text-lg font-semibold">
-              Position QR code within the frame
-            </Text>
-          </View>
-        </CameraView>
-      </View>
+          </CameraView>
+        </View>
+      )}
 
       {error && (
         <Box className="p-4">
