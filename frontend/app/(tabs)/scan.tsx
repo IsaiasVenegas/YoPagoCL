@@ -42,6 +42,7 @@ export default function ScanScreen() {
   const [wsConnected, setWsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  const [expandedAvatars, setExpandedAvatars] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Check if user is authenticated
@@ -494,174 +495,6 @@ export default function ScanScreen() {
             </VStack>
 
             <VStack space="md" className="flex-1">
-              <Box className="bg-background-50 p-4 rounded-lg">
-                <VStack space="sm">
-                  <Text className="text-typography-700 font-semibold">
-                    Session Status: {sessionData.session.status}
-                  </Text>
-                  <Text className="text-typography-600">
-                    Total Amount: {sessionData.session.total_amount / 100}{' '}
-                    {sessionData.session.currency}
-                  </Text>
-                  <Text className="text-typography-600">
-                    Participants: {sessionData.participants.length}
-                  </Text>
-                  <Text className="text-typography-600">
-                    Order Items: {sessionData.order_items.length}
-                  </Text>
-                  {currentParticipantId && (
-                    <Text className="text-typography-700 font-semibold mt-2">
-                      Your Total: {userTotal / 100} {sessionData.session.currency}
-                    </Text>
-                  )}
-                </VStack>
-              </Box>
-
-              {sessionData.order_items.length > 0 && (
-                <Box className="bg-background-50 p-4 rounded-lg">
-                  <Text className="text-typography-700 font-semibold mb-3">
-                    Select Items to Pay For:
-                  </Text>
-                  <VStack space="sm">
-                    {sessionData.order_items.map((item) => {
-                      const isAssignedByMe = getUserAssignments.has(item.id);
-                      const myAssignment = getUserAssignments.get(item.id);
-                      const allAssignments = getAllAssignmentsByItem.get(item.id);
-                      const isAssignedByAnyone = !!allAssignments && allAssignments.totalAmount > 0;
-                      
-                      console.log(`[Render] Item ${item.item_name}: isAssignedByMe=${isAssignedByMe}, allAssignments=`, allAssignments);
-                      
-                      return (
-                        <TouchableOpacity
-                          key={item.id}
-                          onPress={() => {
-                            console.log('Item tapped:', item.item_name, item.id);
-                            handleItemToggle(item.id, item.unit_price);
-                          }}
-                          activeOpacity={0.7}
-                          style={{ marginBottom: 8 }}
-                        >
-                          <HStack
-                            className={`p-3 rounded-lg border-2 ${
-                              isAssignedByMe
-                                ? 'bg-primary-50 border-primary-500'
-                                : isAssignedByAnyone
-                                ? 'bg-background-50 border-primary-300'
-                                : 'bg-background-0 border-border-300'
-                            }`}
-                            style={{ alignItems: 'center', gap: 12 }}
-                          >
-                            {/* Toggle on the left */}
-                            <View
-                              className={`w-6 h-6 rounded-full border-2 ${
-                                isAssignedByMe
-                                  ? 'bg-primary-500 border-primary-600'
-                                  : isAssignedByAnyone
-                                  ? 'bg-primary-300 border-primary-400'
-                                  : 'bg-transparent border-typography-400'
-                              }`}
-                              style={{
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}
-                              pointerEvents="none"
-                            >
-                              {isAssignedByMe && (
-                                <Text className="text-white text-xs font-bold">✓</Text>
-                              )}
-                              {!isAssignedByMe && isAssignedByAnyone && (
-                                <Text className="text-primary-700 text-xs font-bold">○</Text>
-                              )}
-                            </View>
-
-                            {/* Item info in the middle */}
-                            <VStack className="flex-1" space="xs">
-                              <Text
-                                className={`font-semibold ${
-                                  isAssignedByMe ? 'text-primary-900' : 'text-typography-900'
-                                }`}
-                              >
-                                {item.item_name}
-                              </Text>
-                              <Text className="text-typography-700 font-medium">
-                                  Total: {item.unit_price / 100} {sessionData.session.currency}
-                              </Text>
-                              
-                              {/* Calculate remaining amount */}
-                              {(() => {
-                                const totalAssigned = allAssignments?.totalAmount || 0;
-                                const remaining = item.unit_price - totalAssigned;
-                                const isFullyCovered = remaining <= 0;
-                                
-                                return (
-                                  <>
-                                    {isAssignedByMe && myAssignment && (
-                                      <Text className="text-primary-700 text-sm">
-                                        You: {myAssignment.totalAmount / 100}{' '}
-                                        {sessionData.session.currency}
-                                        {myAssignment.ids.length > 1 && ` (${myAssignment.ids.length} assignments)`}
-                                      </Text>
-                                    )}
-                                    {isAssignedByAnyone && allAssignments && !isAssignedByMe && (
-                                      <Text className="text-typography-600 text-sm">
-                                        Assigned by others: {allAssignments.totalAmount / 100}{' '}
-                                        {sessionData.session.currency}
-                                      </Text>
-                                    )}
-                                    {isAssignedByMe && allAssignments && allAssignments.totalAmount > myAssignment!.totalAmount && (
-                                      <Text className="text-typography-600 text-sm">
-                                        Others: {(allAssignments.totalAmount - myAssignment!.totalAmount) / 100}{' '}
-                                        {sessionData.session.currency}
-                                      </Text>
-                                    )}
-                                    <Text 
-                                      className={`text-sm font-semibold ${
-                                        isFullyCovered 
-                                          ? 'text-green-600' 
-                                          : remaining < item.unit_price * 0.1 
-                                          ? 'text-orange-600'
-                                          : 'text-red-600'
-                                      }`}
-                                    >
-                                      {isFullyCovered 
-                                        ? '✓ Fully covered' 
-                                        : `Remaining: ${remaining / 100} ${sessionData.session.currency}`}
-                                    </Text>
-                                  </>
-                                );
-                              })()}
-                            </VStack>
-
-                            {/* Avatars on the right */}
-                            {allAssignments && allAssignments.assignments.length > 0 && (
-                              <HStack space="xs" style={{ flexShrink: 0, alignItems: 'center' }}>
-                                {allAssignments.assignments.map((assignment, index) => {
-                                  const participant = getParticipantInfo(assignment.creditor_id);
-                                  const isCurrentUser = assignment.creditor_id === currentParticipantId;
-                                  
-                                  return (
-                                    <Avatar
-                                      key={`${assignment.creditor_id}-${index}`}
-                                      size="sm"
-                                      fallbackText={getInitials(assignment.creditor_id)}
-                                      style={{
-                                        borderWidth: isCurrentUser ? 2 : 0,
-                                        borderColor: '#4F46E5',
-                                      }}
-                                    />
-                                  );
-                                })}
-                              </HStack>
-                            )}
-                          </HStack>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </VStack>
-                </Box>
-              )}
-
               {sessionData.participants.length > 0 && (
                 <Box className="bg-background-50 p-4 rounded-lg">
                   <Text className="text-typography-700 font-semibold mb-2">
@@ -688,6 +521,234 @@ export default function ScanScreen() {
                   </VStack>
                 </Box>
               )}
+
+              {sessionData.order_items.length > 0 && (
+                <Box className="bg-background-50 p-4 rounded-lg">
+                  <Text className="text-typography-700 font-semibold mb-3">
+                    Select Items to Pay For:
+                  </Text>
+                  <VStack space="sm">
+                    {sessionData.order_items.map((item) => {
+                      const isAssignedByMe = getUserAssignments.has(item.id);
+                      const myAssignment = getUserAssignments.get(item.id);
+                      const allAssignments = getAllAssignmentsByItem.get(item.id);
+                      const isAssignedByAnyone = !!allAssignments && allAssignments.totalAmount > 0;
+                      
+                      console.log(`[Render] Item ${item.item_name}: isAssignedByMe=${isAssignedByMe}, allAssignments=`, allAssignments);
+                      
+                      return (
+                        <View key={item.id} style={{ marginBottom: 8 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log('Item tapped:', item.item_name, item.id);
+                              handleItemToggle(item.id, item.unit_price);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <HStack
+                              className={`p-3 rounded-lg border-2 ${
+                                isAssignedByMe
+                                  ? 'bg-primary-50 border-primary-600'
+                                  : 'bg-background-0 border-typography-400'
+                              }`}
+                              style={{ alignItems: 'center', gap: 12 }}
+                            >
+                              {/* Toggle on the left */}
+                              <View
+                                className={`w-6 h-6 rounded-full border-2 ${
+                                  isAssignedByMe
+                                    ? 'bg-primary-500 border-primary-600'
+                                    : 'bg-transparent border-typography-400'
+                                }`}
+                                style={{
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                                pointerEvents="none"
+                              >
+                                {isAssignedByMe && (
+                                  <Text className="text-white text-xs font-bold">✓</Text>
+                                )}
+                              </View>
+
+                              {/* Item info in the middle */}
+                              <VStack className="flex-1" space="xs">
+                                <Text
+                                  className={`font-semibold ${
+                                    isAssignedByMe ? 'text-primary-900' : 'text-typography-900'
+                                  }`}
+                                >
+                                  {item.item_name}
+                                </Text>
+                                <Text className="text-typography-700 font-medium">
+                                    Total: {item.unit_price / 100} {sessionData.session.currency}
+                                </Text>
+                                
+                                {/* Calculate remaining amount */}
+                                {(() => {
+                                  const totalAssigned = allAssignments?.totalAmount || 0;
+                                  const remaining = item.unit_price - totalAssigned;
+                                  const isFullyCovered = remaining <= 0;
+                                  
+                                  return (
+                                    <>
+                                      {isAssignedByMe && myAssignment && (
+                                        <Text className="text-primary-700 text-sm">
+                                          You: {myAssignment.totalAmount / 100}{' '}
+                                          {sessionData.session.currency}
+                                          {myAssignment.ids.length > 1 && ` (${myAssignment.ids.length} assignments)`}
+                                        </Text>
+                                      )}
+                                      {isAssignedByAnyone && allAssignments && !isAssignedByMe && (
+                                        <Text className="text-typography-600 text-sm">
+                                          Assigned by others: {allAssignments.totalAmount / 100}{' '}
+                                          {sessionData.session.currency}
+                                        </Text>
+                                      )}
+                                      {isAssignedByMe && allAssignments && allAssignments.totalAmount > myAssignment!.totalAmount && (
+                                        <Text className="text-typography-600 text-sm">
+                                          Others: {(allAssignments.totalAmount - myAssignment!.totalAmount) / 100}{' '}
+                                          {sessionData.session.currency}
+                                        </Text>
+                                      )}
+                                      <Text 
+                                        className={`text-sm font-semibold ${
+                                          isFullyCovered 
+                                            ? 'text-green-600' 
+                                            : remaining < item.unit_price * 0.1 
+                                            ? 'text-orange-600'
+                                            : 'text-red-600'
+                                        }`}
+                                      >
+                                        {isFullyCovered 
+                                          ? '✓ Fully covered' 
+                                          : `Remaining: ${remaining / 100} ${sessionData.session.currency}`}
+                                      </Text>
+                                    </>
+                                  );
+                                })()}
+                              </VStack>
+
+                              {/* Avatars on the right */}
+                              {allAssignments && allAssignments.assignments.length > 0 && (
+                                <HStack space="xs" style={{ flexShrink: 0, alignItems: 'center' }}>
+                                  {allAssignments.assignments.length === 1 ? (
+                                    // Single assignment - show only avatar
+                                    (() => {
+                                      const assignment = allAssignments.assignments[0];
+                                      const isCurrentUser = assignment.creditor_id === currentParticipantId;
+                                      return (
+                                        <Avatar
+                                          size="sm"
+                                          fallbackText={getInitials(assignment.creditor_id)}
+                                          style={{
+                                            borderWidth: isCurrentUser ? 2 : 0,
+                                            borderColor: '#4F46E5',
+                                          }}
+                                        />
+                                      );
+                                    })()
+                                  ) : (
+                                    // Multiple assignments - show first avatar + plus indicator
+                                    <>
+                                      {(() => {
+                                        const firstAssignment = allAssignments.assignments[0];
+                                        const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
+                                        return (
+                                          <Avatar
+                                            size="sm"
+                                            fallbackText={getInitials(firstAssignment.creditor_id)}
+                                            style={{
+                                              borderWidth: isCurrentUser ? 2 : 0,
+                                              borderColor: '#4F46E5',
+                                            }}
+                                          />
+                                        );
+                                      })()}
+                                      <TouchableOpacity
+                                        onPress={(e) => {
+                                          e.stopPropagation();
+                                          setExpandedAvatars((prev) => {
+                                            const newSet = new Set(prev);
+                                            if (newSet.has(item.id)) {
+                                              newSet.delete(item.id);
+                                            } else {
+                                              newSet.add(item.id);
+                                            }
+                                            return newSet;
+                                          });
+                                        }}
+                                        className="w-6 h-6 rounded-full bg-background-100 items-center justify-center ml-1"
+                                      >
+                                        <Text className="text-typography-700 text-xs font-bold">
+                                          +{allAssignments.assignments.length - 1}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    </>
+                                  )}
+                                </HStack>
+                              )}
+                            </HStack>
+                          </TouchableOpacity>
+                          
+                          {/* Expanded avatars below the item */}
+                          {allAssignments && 
+                           allAssignments.assignments.length > 1 && 
+                           expandedAvatars.has(item.id) && (
+                            <VStack space="xs" className="mt-2 ml-8">
+                              <Text className="text-typography-600 text-xs font-semibold mb-1">
+                                Assigned to:
+                              </Text>
+                              <HStack space="xs" style={{ flexWrap: 'wrap' }}>
+                                {allAssignments.assignments.map((assignment, index) => {
+                                  const isCurrentUser = assignment.creditor_id === currentParticipantId;
+                                  return (
+                                    <HStack
+                                      key={`${assignment.creditor_id}-${index}`}
+                                      space="xs"
+                                      style={{ alignItems: 'center', marginRight: 8, marginBottom: 4 }}
+                                    >
+                                      <Avatar
+                                        size="sm"
+                                        fallbackText={getInitials(assignment.creditor_id)}
+                                        style={{
+                                          borderWidth: isCurrentUser ? 2 : 0,
+                                          borderColor: '#4F46E5',
+                                        }}
+                                      />
+                                      <Text className="text-typography-600 text-xs">
+                                        {assignment.amount / 100} {sessionData.session.currency}
+                                      </Text>
+                                    </HStack>
+                                  );
+                                })}
+                              </HStack>
+                            </VStack>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </VStack>
+                </Box>
+              )}
+
+              <Box className="bg-background-50 p-4 rounded-lg">
+                <VStack space="sm">
+                  <Text className="text-typography-700 font-semibold">
+                    Session Status: {sessionData.session.status}
+                  </Text>
+                  <Text className="text-typography-600">
+                    Total Amount: {sessionData.session.total_amount / 100}{' '}
+                    {sessionData.session.currency}
+                  </Text>
+                  {currentParticipantId && (
+                    <Text className="text-typography-700 font-semibold mt-2">
+                      Your Total: {userTotal / 100} {sessionData.session.currency}
+                    </Text>
+                  )}
+                </VStack>
+              </Box>
             </VStack>
 
             <Button
