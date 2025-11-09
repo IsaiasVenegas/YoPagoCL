@@ -108,6 +108,172 @@ def mark_invoice_paid(invoice_id: uuid.UUID, data: InvoiceMarkPaid, db: SessionD
     return invoice
 
 
+def _get_creditor_user_id(db: SessionDep, creditor_participant_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """Get creditor user ID from participant ID. Returns None if invalid."""
+    import logging
+    creditor_participant = crud_participants.get_participant_by_id(db, creditor_participant_id)
+    if not creditor_participant or not creditor_participant.user_id:
+        logging.warning(f"[Pay Bill] Skipping creditor participant {creditor_participant_id}: no user_id")
+        return None
+    return creditor_participant.user_id
+
+
+def _create_invoice_to_admin(
+    db: SessionDep,
+    payment_data: BillPaymentRequest,
+    creditor_user_id: uuid.UUID,
+    restaurant_admin_id: uuid.UUID,
+    creditor_assigns: list
+) -> Optional[InvoiceResponse]:
+    """Create and mark as paid an invoice from creditor to restaurant admin."""
+    import logging
+    from datetime import datetime
+    
+    total_creditor_amount = sum(a.assigned_amount for a in creditor_assigns)
+    invoice_to_admin_data = InvoiceCreate(
+        session_id=payment_data.session_id,
+        group_id=payment_data.group_id,
+        from_user=creditor_user_id,
+        to_user=restaurant_admin_id,
+        total_amount=total_creditor_amount,
+        currency=payment_data.currency,
+        invoice_items=[InvoiceItemCreate(item_assignment_id=a.id) for a in creditor_assigns]
+    )
+    
+    invoice_to_admin = crud_invoices.create_invoice(db, invoice_to_admin_data)
+    crud_invoices.mark_invoice_paid(db, invoice_to_admin.id, datetime.now())
+    logging.info(f"[Pay Bill] Created and marked as paid invoice {invoice_to_admin.id} from creditor {creditor_user_id} to admin for {total_creditor_amount} CLP")
+    return invoice_to_admin
+
+
+def _create_debtor_invoices(
+    db: SessionDep,
+    payment_data: BillPaymentRequest,
+    creditor_user_id: uuid.UUID,
+    creditor_assigns: list
+) -> list[InvoiceResponse]:
+    """Create invoices from debtors to creditor for assignments with debtors."""
+    import logging
+    created_invoices = []
+    
+    for assignment in creditor_assigns:
+        if assignment.debtor_id is None:
+            continue
+        
+        debtor_participant = crud_participants.get_participant_by_id(db, assignment.debtor_id)
+        if not debtor_participant or not debtor_participant.user_id:
+            logging.warning(f"[Pay Bill] Skipping assignment {assignment.id}: debtor participant has no user_id")
+            continue
+        
+        debtor_user_id = debtor_participant.user_id
+        is_valid, error_message = crud_invoices.validate_users_in_group(
+            db, payment_data.group_id, debtor_user_id, creditor_user_id
+        )
+        if not is_valid:
+            logging.warning(f"[Pay Bill] Skipping invoice from debtor {debtor_user_id} to creditor {creditor_user_id}: {error_message}")
+            continue
+        
+        invoice_data = InvoiceCreate(
+            session_id=payment_data.session_id,
+            group_id=payment_data.group_id,
+            from_user=debtor_user_id,
+            to_user=creditor_user_id,
+            total_amount=assignment.assigned_amount,
+            currency=payment_data.currency,
+            invoice_items=[InvoiceItemCreate(item_assignment_id=assignment.id)]
+        )
+        
+        invoice = crud_invoices.create_invoice(db, invoice_data)
+        created_invoices.append(invoice)
+        logging.info(f"[Pay Bill] Created pending invoice {invoice.id} from debtor {debtor_user_id} to creditor {creditor_user_id} for {assignment.assigned_amount} CLP")
+    
+    return created_invoices
+
+
+def _get_participants_with_assignments(
+    all_participants: list,
+    all_assignments: list
+) -> set[uuid.UUID]:
+    """Get set of user IDs who have assignments as creditors."""
+    participants_with_assignments = set()
+    for assignment in all_assignments:
+        participant = next(
+            (p for p in all_participants if p.id == assignment.creditor_id),
+            None
+        )
+        if participant and participant.user_id:
+            participants_with_assignments.add(participant.user_id)
+    return participants_with_assignments
+
+
+def _get_participants_who_paid(session_invoices: list) -> set[uuid.UUID]:
+    """Get set of user IDs who have paid invoices."""
+    participants_who_paid = set()
+    for invoice in session_invoices:
+        if invoice.from_user:
+            participants_who_paid.add(invoice.from_user)
+    return participants_who_paid
+
+
+async def _finalize_session_if_all_paid(
+    db: SessionDep,
+    session_id: uuid.UUID,
+    session
+) -> None:
+    """Check if all bills are paid and finalize session if so."""
+    import logging
+    from datetime import datetime
+    from models.invoices import Invoice
+    from sqlmodel import select
+    
+    try:
+        all_participants = crud_participants.get_participants_by_session_id(db, session_id)
+        all_assignments = crud_assignments.get_assignments_by_session_id(db, session_id)
+        
+        session_invoices = db.exec(
+            select(Invoice)
+            .where(Invoice.session_id == session_id)
+            .where(Invoice.status == "paid")
+        ).all()
+        
+        participants_with_assignments = _get_participants_with_assignments(all_participants, all_assignments)
+        participants_who_paid = _get_participants_who_paid(session_invoices)
+        
+        all_participants_paid = (
+            len(participants_with_assignments) > 0 and
+            participants_with_assignments.issubset(participants_who_paid)
+        )
+        
+        if not all_participants_paid:
+            return
+        
+        logging.info(f"[Pay Bill] All bills paid. Auto-finalizing session {session_id}")
+        if not session:
+            return
+        
+        total_amount = sum(a.assigned_amount for a in all_assignments)
+        session.total_amount = total_amount
+        session.status = "closed"
+        session.session_end = datetime.now()
+        db.add(session)
+        db.commit()
+        
+        from api.websocket.manager import manager
+        from schemas.websocket import SessionFinalizedMessage
+        
+        broadcast_msg = SessionFinalizedMessage(
+            session_id=session_id,
+            total_amount=total_amount,
+            ready_for_invoices=True
+        )
+        await manager.broadcast_to_session(
+            broadcast_msg.model_dump(mode='json'),
+            session_id
+        )
+    except Exception as e:
+        logging.error(f"[Pay Bill] Error checking if all bills paid: {str(e)}", exc_info=True)
+
+
 @router.post("/pay-bill", response_model=BillPaymentResponse)
 async def pay_bill(
     payment_data: BillPaymentRequest,
@@ -119,14 +285,12 @@ async def pay_bill(
     2. For each assignment with a debtor, creates invoice from debtor to creditor (pending)
     """
     import logging
-    from datetime import datetime
     from models.table_sessions import TableSession
     from models.restaurants import Restaurant
     
     logging.info(f"[Pay Bill] Request received for user: {current_user.id}")
     logging.info(f"[Pay Bill] Amount: {payment_data.amount} CLP")
     
-    # Get session and restaurant
     session = db.get(TableSession, payment_data.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -138,15 +302,12 @@ async def pay_bill(
     restaurant_admin_id = restaurant.owner
     logging.info(f"[Pay Bill] Restaurant admin: {restaurant_admin_id}")
     
-    # Get all assignments for the session
     assignments = crud_assignments.get_assignments_by_session_id(db, payment_data.session_id)
-    
     if not assignments:
         raise HTTPException(status_code=400, detail="No assignments found for this session")
     
     logging.info(f"[Pay Bill] Found {len(assignments)} total assignments")
     
-    # 1. Agrupa los distintos assignments según acreedor (creditor)
     creditor_assignments = defaultdict(list)
     for assignment in assignments:
         creditor_assignments[assignment.creditor_id].append(assignment)
@@ -155,20 +316,14 @@ async def pay_bill(
     
     created_invoices = []
     
-    # Process each creditor group
     for creditor_participant_id, creditor_assigns in creditor_assignments.items():
-        # Get creditor participant and user
-        creditor_participant = crud_participants.get_participant_by_id(db, creditor_participant_id)
-        if not creditor_participant or not creditor_participant.user_id:
-            logging.warning(f"[Pay Bill] Skipping creditor participant {creditor_participant_id}: no user_id")
+        creditor_user_id = _get_creditor_user_id(db, creditor_participant_id)
+        if not creditor_user_id:
             continue
         
-        creditor_user_id = creditor_participant.user_id
         total_creditor_amount = sum(a.assigned_amount for a in creditor_assigns)
-        
         logging.info(f"[Pay Bill] Processing creditor {creditor_user_id} with {len(creditor_assigns)} assignments, total: {total_creditor_amount} CLP")
         
-        # Validate creditor is in group (restaurant admin doesn't need to be in group)
         is_valid, error_message = crud_invoices.validate_user_in_group(
             db, payment_data.group_id, creditor_user_id
         )
@@ -176,138 +331,25 @@ async def pay_bill(
             logging.warning(f"[Pay Bill] Skipping creditor {creditor_user_id}: {error_message}")
             continue
         
-        # 2. Por cada acreedor, crea un invoice donde "from" es el acreedor y "to" es el administrador del restaurant
-        invoice_to_admin_data = InvoiceCreate(
-            session_id=payment_data.session_id,
-            group_id=payment_data.group_id,
-            from_user=creditor_user_id,
-            to_user=restaurant_admin_id,
-            total_amount=total_creditor_amount,
-            currency=payment_data.currency,
-            invoice_items=[InvoiceItemCreate(item_assignment_id=a.id) for a in creditor_assigns]
+        invoice_to_admin = _create_invoice_to_admin(
+            db, payment_data, creditor_user_id, restaurant_admin_id, creditor_assigns
         )
+        if invoice_to_admin:
+            created_invoices.append(invoice_to_admin)
         
-        invoice_to_admin = crud_invoices.create_invoice(db, invoice_to_admin_data)
-        
-        # 4. En el caso de los invoices dirigidos al administrador del restaurant, 
-        # se deben crear las transacciones wallet correspondientes, y marcar el invoice como "pagado"
-        crud_invoices.mark_invoice_paid(db, invoice_to_admin.id, datetime.now())
-        created_invoices.append(invoice_to_admin)
-        logging.info(f"[Pay Bill] Created and marked as paid invoice {invoice_to_admin.id} from creditor {creditor_user_id} to admin for {total_creditor_amount} CLP")
-        
-        # 3. Por cada assignment en que exista un deudor, crea un invoice "from" deudor "to" acreedor
-        for assignment in creditor_assigns:
-            if assignment.debtor_id is not None:
-                # Get debtor participant and user
-                debtor_participant = crud_participants.get_participant_by_id(db, assignment.debtor_id)
-                if not debtor_participant or not debtor_participant.user_id:
-                    logging.warning(f"[Pay Bill] Skipping assignment {assignment.id}: debtor participant has no user_id")
-                    continue
-                
-                debtor_user_id = debtor_participant.user_id
-                
-                # Validate debtor is in group
-                is_valid, error_message = crud_invoices.validate_users_in_group(
-                    db, payment_data.group_id, debtor_user_id, creditor_user_id
-                )
-                if not is_valid:
-                    logging.warning(f"[Pay Bill] Skipping invoice from debtor {debtor_user_id} to creditor {creditor_user_id}: {error_message}")
-                    continue
-                
-                # Create invoice from debtor to creditor
-                invoice_debtor_to_creditor_data = InvoiceCreate(
-                    session_id=payment_data.session_id,
-                    group_id=payment_data.group_id,
-                    from_user=debtor_user_id,
-                    to_user=creditor_user_id,
-                    total_amount=assignment.assigned_amount,
-                    currency=payment_data.currency,
-                    invoice_items=[InvoiceItemCreate(item_assignment_id=assignment.id)]
-                )
-                
-                invoice_debtor_to_creditor = crud_invoices.create_invoice(db, invoice_debtor_to_creditor_data)
-                # Note: This invoice is NOT marked as paid - it remains pending
-                created_invoices.append(invoice_debtor_to_creditor)
-                logging.info(f"[Pay Bill] Created pending invoice {invoice_debtor_to_creditor.id} from debtor {debtor_user_id} to creditor {creditor_user_id} for {assignment.assigned_amount} CLP")
+        debtor_invoices = _create_debtor_invoices(
+            db, payment_data, creditor_user_id, creditor_assigns
+        )
+        created_invoices.extend(debtor_invoices)
     
-    # Commit all changes
     db.commit()
-    
     logging.info(f"[Pay Bill] Created {len(created_invoices)} invoices total")
     
-    # Check if all bills are paid and auto-finalize if so
-    try:
-        # Get all participants in the session
-        all_participants = crud_participants.get_participants_by_session_id(db, payment_data.session_id)
-        
-        # Get all assignments for the session
-        all_assignments = crud_assignments.get_assignments_by_session_id(db, payment_data.session_id)
-        
-        # Get all invoices for this session
-        from models.invoices import Invoice
-        from sqlmodel import select
-        session_invoices = db.exec(
-            select(Invoice)
-            .where(Invoice.session_id == payment_data.session_id)
-            .where(Invoice.status == "paid")
-        ).all()
-        
-        # Get all participants who have assignments as creditors (they need to pay)
-        participants_with_assignments = set()
-        for assignment in all_assignments:
-            participant = next(
-                (p for p in all_participants if p.id == assignment.creditor_id),
-                None
-            )
-            if participant and participant.user_id:
-                participants_with_assignments.add(participant.user_id)
-        
-        # Get all participants who have paid (have paid invoices as from_user)
-        participants_who_paid = set()
-        for invoice in session_invoices:
-            if invoice.from_user:
-                participants_who_paid.add(invoice.from_user)
-        
-        # Check if all participants with assignments have paid
-        all_participants_paid = (
-            len(participants_with_assignments) > 0 and
-            participants_with_assignments.issubset(participants_who_paid)
-        )
-        
-        # If all participants have paid, finalize the session
-        if all_participants_paid:
-            logging.info(f"[Pay Bill] All bills paid. Auto-finalizing session {payment_data.session_id}")
-            
-            # Finalize session
-            if session:
-                total_amount = sum(a.assigned_amount for a in all_assignments)
-                session.total_amount = total_amount
-                session.status = "closed"
-                session.session_end = datetime.now()
-                db.add(session)
-                db.commit()
-                
-                # Broadcast finalization via WebSocket
-                from api.websocket.manager import manager
-                from schemas.websocket import SessionFinalizedMessage
-                
-                broadcast_msg = SessionFinalizedMessage(
-                    session_id=payment_data.session_id,
-                    total_amount=total_amount,
-                    ready_for_invoices=True
-                )
-                # Broadcast asynchronously (endpoint is already async)
-                await manager.broadcast_to_session(
-                    broadcast_msg.model_dump(mode='json'),
-                    payment_data.session_id
-                )
-    except Exception as e:
-        logging.error(f"[Pay Bill] Error checking if all bills paid: {str(e)}", exc_info=True)
-        # Don't fail the payment if auto-finalization fails
+    await _finalize_session_if_all_paid(db, payment_data.session_id, session)
     
     return BillPaymentResponse(
         payment_id=f"payment-{uuid.uuid4()}",
         invoices=created_invoices,
-        transbank_token=None  # No Transbank token needed for wallet payments
+        transbank_token=None
     )
 
