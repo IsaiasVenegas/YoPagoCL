@@ -188,6 +188,15 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
             "message": f"Failed to join session: {str(e)}"
         })
 
+def _validate_assignment_belongs_to_session(order_item: OrderItem, session_id: uuid.UUID) -> tuple[bool, str | None]:
+    """
+    Validate that an assignment exists and belongs to the session.
+    Returns (is_valid, error_message).
+    """
+    if not order_item or order_item.session_id != session_id:
+        return False, "Order item not found or doesn't belong to this session"
+    return True, None
+
 
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
     """Handle assign_item message."""
@@ -198,10 +207,11 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
         
         # Verify order item belongs to session
         order_item = get_order_item_by_id(db, msg.order_item_id)
-        if not order_item or order_item.session_id != session_id:
+        belongs_to_session, error_msg = _validate_assignment_belongs_to_session(order_item, session_id)
+        if not belongs_to_session:
             await websocket.send_json({
                 "type": "error",
-                "message": "Order item not found or doesn't belong to this session"
+                "message": error_msg
             })
             return
         
@@ -266,10 +276,11 @@ async def handle_update_assignment(websocket: WebSocket, session_id: uuid.UUID, 
         
         # Verify assignment belongs to session
         order_item = get_order_item_by_id(db, assignment.order_item_id)
-        if not order_item or order_item.session_id != session_id:
+        belongs_to_session, error_msg = _validate_assignment_belongs_to_session(order_item, session_id)
+        if not belongs_to_session:
             await websocket.send_json({
                 "type": "error",
-                "message": "Assignment doesn't belong to this session"
+                "message": error_msg
             })
             return
         
@@ -307,10 +318,11 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
         
         # Verify assignment belongs to session
         order_item = get_order_item_by_id(db, assignment.order_item_id)
-        if not order_item or order_item.session_id != session_id:
+        belongs_to_session, error_msg = _validate_assignment_belongs_to_session(order_item, session_id)
+        if not belongs_to_session:
             await websocket.send_json({
                 "type": "error",
-                "message": "Assignment doesn't belong to this session"
+                "message": error_msg
             })
             return
         
