@@ -339,15 +339,11 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
         assignments = get_assignments_by_order_item_id(db, order_item.id)
         for assignment in assignments:
             if assignment.debtor_id == msg.creditor_id:
-                delete_assignment(db, assignment.id)
-                # Broadcast to all
-                broadcast_msg = AssignmentRemovedMessage(assignment_id=assignment.id)
-                await manager.broadcast_to_session(
-                    broadcast_msg.model_dump(mode='json'),
-                    session_id
-                )
+                # Save assignment_id before deleting
+                assignment_id_to_remove = assignment.id
+                delete_assignment(db, assignment_id_to_remove)
                 # Broadcast to all (including sender so they get the update too)
-                broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
+                broadcast_msg = AssignmentRemovedMessage(assignment_id=assignment_id_to_remove)
                 # Use model_dump with mode='json' to ensure UUIDs are serialized as strings
                 broadcast_data = broadcast_msg.model_dump(mode='json')
                 print(f"[WebSocket] Broadcasting assignment_removed: {broadcast_data}")
