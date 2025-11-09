@@ -53,4 +53,5 @@ class UserUpdateRequest(BaseModel):
     name: str | None = None
     phone: str | None = None
     avatar_url: str | None = None
+    push_notification_token: str | None = None
 

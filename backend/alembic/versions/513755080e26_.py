@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: d8d987484770
+Revision ID: 513755080e26
 Revises: 
-Create Date: 2025-11-09 09:48:48.320602
+Create Date: 2025-11-09 12:54:40.815730
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd8d987484770'
+revision: str = '513755080e26'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,6 +27,8 @@ def upgrade() -> None:
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
     sa.Column('email', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
     sa.Column('phone', sqlmodel.sql.sqltypes.AutoString(length=20), nullable=True),
+    sa.Column('avatar_url', sqlmodel.sql.sqltypes.AutoString(length=500), nullable=True),
+    sa.Column('push_notification_token', sqlmodel.sql.sqltypes.AutoString(length=500), nullable=True),
     sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),

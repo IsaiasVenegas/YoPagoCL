@@ -342,7 +342,8 @@ async def update_current_user(
         user=current_user,
         name=update_data.get("name", NOT_PROVIDED),
         phone=update_data.get("phone", NOT_PROVIDED),
-        avatar_url=update_data.get("avatar_url", NOT_PROVIDED)
+        avatar_url=update_data.get("avatar_url", NOT_PROVIDED),
+        push_notification_token=update_data.get("push_notification_token", NOT_PROVIDED)
     )
     
     return UserResponse(

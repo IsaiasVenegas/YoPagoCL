@@ -99,7 +99,8 @@ def update_user(
     user: User,
     name: str | None = NOT_PROVIDED,
     phone: str | None = NOT_PROVIDED,
-    avatar_url: str | None = NOT_PROVIDED
+    avatar_url: str | None = NOT_PROVIDED,
+    push_notification_token: str | None = NOT_PROVIDED
 ) -> User:
     """Update user information.
     
@@ -109,6 +110,7 @@ def update_user(
         name: New name (optional, pass None to keep unchanged)
         phone: New phone (optional, pass None to keep unchanged)
         avatar_url: New avatar URL (optional, pass None to delete avatar)
+        push_notification_token: New push notification token (optional, pass None to keep unchanged)
     
     Returns:
         Updated user
@@ -119,6 +121,8 @@ def update_user(
         user.phone = phone
     if avatar_url is not NOT_PROVIDED:
         user.avatar_url = avatar_url
+    if push_notification_token is not NOT_PROVIDED:
+        user.push_notification_token = push_notification_token
     
     db.add(user)
     db.commit()
