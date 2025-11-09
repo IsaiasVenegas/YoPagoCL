@@ -3,15 +3,12 @@ import { useRouter } from 'expo-router';
 import {
   Box,
   VStack,
-  HStack,
-  Button,
-  ButtonText,
   Text,
   Heading,
   Alert,
   AlertText,
 } from '@/components/ui';
-import { apiService, getAuthToken } from '@/services/api';
+import { getAuthToken } from '@/services/api';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -26,16 +23,6 @@ export default function HomeScreen() {
       setIsAuthenticated(true);
     }
   }, []);
-
-  const handleLogout = async () => {
-    try {
-      await apiService.logout();
-      router.replace('/login');
-    } catch (error) {
-      // Even if logout fails, clear token and redirect
-      router.replace('/login');
-    }
-  };
 
   if (!isAuthenticated) {
     return null; // Will redirect
@@ -62,17 +49,6 @@ export default function HomeScreen() {
             This is your home screen. You can start using the app features from here.
           </Text>
         </VStack>
-
-        <Box className="mt-auto mb-8">
-          <Button
-            onPress={handleLogout}
-            variant="outline"
-            className="border-error-500"
-            size="lg"
-          >
-            <ButtonText className="text-error-500">Logout</ButtonText>
-          </Button>
-        </Box>
       </VStack>
     </Box>
   );

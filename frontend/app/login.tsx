@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Eye, EyeOff } from 'lucide-react-native';
@@ -33,19 +33,34 @@ export default function LoginScreen() {
   const [status, setStatus] = useState<StatusType>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const emailInputRef = useRef<any>(null);
+  const passwordInputRef = useRef<any>(null);
+  const [emailValue, setEmailValue] = useState('');
+  const [passwordValue, setPasswordValue] = useState('');
 
   const handleTogglePassword = () => {
     setShowPassword((showState) => !showState);
   };
 
+  // Sync local state with formData
+  React.useEffect(() => {
+    setFormData((prev) => ({ ...prev, email: emailValue }));
+  }, [emailValue]);
+
+  React.useEffect(() => {
+    setFormData((prev) => ({ ...prev, password: passwordValue }));
+  }, [passwordValue]);
+
   const validateForm = (): string | null => {
-    if (!formData.email.trim()) {
+    const email = emailValue || formData.email;
+    const password = passwordValue || formData.password;
+    if (!email.trim()) {
       return 'Email is required';
     }
-    if (!formData.email.includes('@')) {
+    if (!email.includes('@')) {
       return 'Please enter a valid email address';
     }
-    if (!formData.password) {
+    if (!password) {
       return 'Password is required';
     }
     return null;
@@ -63,9 +78,11 @@ export default function LoginScreen() {
     setStatusMessage('');
 
     try {
+      const email = emailValue || formData.email;
+      const password = passwordValue || formData.password;
       const response = await apiService.login({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password,
       });
 
       setAuthToken(response.access_token);
@@ -136,15 +153,20 @@ export default function LoginScreen() {
                 <Text className="text-typography-700 font-medium">Email</Text>
                 <Input>
                   <InputField
+                    ref={emailInputRef}
                     placeholder="Enter your email"
-                    value={formData.email}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, email: text })
-                    }
+                    value={emailValue}
+                    onChangeText={setEmailValue}
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    textContentType="emailAddress"
+                    autoCorrect={false}
+                    textContentType="username"
                     autoComplete="email"
+                    // @ts-ignore - autoCompleteType is deprecated but needed for some iOS versions
+                    autoCompleteType="email"
+                    returnKeyType="next"
+                    enablesReturnKeyAutomatically={true}
+                    clearButtonMode="while-editing"
                   />
                 </Input>
               </VStack>
@@ -153,14 +175,20 @@ export default function LoginScreen() {
                 <Text className="text-typography-700 font-medium">Password</Text>
                 <Input>
                   <InputField
+                    ref={passwordInputRef}
                     placeholder="Enter your password"
-                    value={formData.password}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, password: text })
-                    }
+                    value={passwordValue}
+                    onChangeText={setPasswordValue}
                     secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                     textContentType="password"
                     autoComplete="password"
+                    // @ts-ignore - autoCompleteType is deprecated but needed for some iOS versions
+                    autoCompleteType="password"
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    enablesReturnKeyAutomatically={true}
                   />
                   <InputSlot className="pr-3" onPress={handleTogglePassword}>
                     <InputIcon
