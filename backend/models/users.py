@@ -23,6 +23,7 @@ class User(SQLModel, table=True):
     name: str = Field(max_length=100, nullable=False)
     email: str = Field(max_length=100, unique=True, nullable=False, index=True)
     phone: str | None = Field(default=None, max_length=20, nullable=True)
+    avatar_url: str | None = Field(default=None, max_length=500, nullable=True)
     hashed_password: str | None = Field(default=None, max_length=100, nullable=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(settings.APP_TIMEZONE),

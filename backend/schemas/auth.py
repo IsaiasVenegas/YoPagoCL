@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     phone: str | None = None
+    avatar_url: str | None = None
 
     class Config:
         from_attributes = True
@@ -45,4 +46,10 @@ class LoginRequest(BaseModel):
     """Request to login with email and password."""
     email: str
     password: str
+
+
+class UserUpdateRequest(BaseModel):
+    """Request to update user information."""
+    name: str | None = None
+    phone: str | None = None
 

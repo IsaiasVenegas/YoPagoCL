@@ -2,12 +2,14 @@ import secrets
 import hashlib
 import base64
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from authlib.integrations.starlette_client import OAuthError
 from urllib.parse import urlencode
 
-from api.deps import SessionDep
-from crud.auth import get_or_create_user_from_oauth, create_user_with_password, authenticate_user
+from api.deps import SessionDep, CurrentUser
+from crud.auth import get_or_create_user_from_oauth, create_user_with_password, authenticate_user, update_user
 from core.security import create_access_token
 from core.oauth import oauth
 from schemas.auth import (
@@ -16,7 +18,8 @@ from schemas.auth import (
     UserResponse,
     LoginCallbackRequest,
     RegisterRequest,
-    LoginRequest
+    LoginRequest,
+    UserUpdateRequest
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -278,5 +281,121 @@ async def search_user_by_email(
         id=user.id,
         email=user.email,
         name=user.name,
-        phone=user.phone
+        phone=user.phone,
+        avatar_url=user.avatar_url
+    )
+
+
+@router.get("/users/me", response_model=UserResponse)
+async def get_current_user_info(
+    current_user: CurrentUser
+):
+    """Get current authenticated user information.
+    
+    Returns:
+        Current user information
+    """
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        name=current_user.name,
+        phone=current_user.phone,
+        avatar_url=current_user.avatar_url
+    )
+
+
+@router.put("/users/me", response_model=UserResponse)
+async def update_current_user(
+    user_update: UserUpdateRequest,
+    current_user: CurrentUser,
+    db: SessionDep
+):
+    """Update current user information.
+    
+    Args:
+        user_update: User information to update (name, phone)
+        current_user: Current authenticated user
+        db: Database session
+    
+    Returns:
+        Updated user information
+    """
+    updated_user = update_user(
+        db=db,
+        user=current_user,
+        name=user_update.name,
+        phone=user_update.phone
+    )
+    
+    return UserResponse(
+        id=updated_user.id,
+        email=updated_user.email,
+        name=updated_user.name,
+        phone=updated_user.phone,
+        avatar_url=updated_user.avatar_url
+    )
+
+
+@router.post("/users/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = None,
+    db: SessionDep = None
+):
+    """Upload avatar for current user.
+    
+    Args:
+        file: Image file to upload
+        current_user: Current authenticated user
+        db: Database session
+    
+    Returns:
+        Updated user information with new avatar URL
+    """
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    # Create avatars directory if it doesn't exist
+    # Path is relative to the backend directory
+    avatars_dir = Path(__file__).parent.parent.parent / "avatars"
+    avatars_dir.mkdir(exist_ok=True)
+    
+    # Generate unique filename
+    file_extension = Path(file.filename).suffix if file.filename else '.jpg'
+    unique_filename = f"{current_user.id}_{uuid.uuid4()}{file_extension}"
+    file_path = avatars_dir / unique_filename
+    
+    # Save file
+    try:
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    
+    # Delete old avatar if it exists
+    if current_user.avatar_url:
+        old_filename = current_user.avatar_url.split("/")[-1]
+        old_avatar_path = avatars_dir / old_filename
+        if old_avatar_path.exists():
+            try:
+                old_avatar_path.unlink()
+            except Exception:
+                pass  # Ignore errors when deleting old avatar
+    
+    # Update user avatar URL
+    avatar_url = f"/api/avatars/{unique_filename}"
+    updated_user = update_user(
+        db=db,
+        user=current_user,
+        avatar_url=avatar_url
+    )
+    
+    return UserResponse(
+        id=updated_user.id,
+        email=updated_user.email,
+        name=updated_user.name,
+        phone=updated_user.phone,
+        avatar_url=updated_user.avatar_url
     )

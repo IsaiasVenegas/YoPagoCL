@@ -89,3 +89,36 @@ def authenticate_user(
     
     return user
 
+
+def update_user(
+    db: Session,
+    user: User,
+    name: str | None = None,
+    phone: str | None = None,
+    avatar_url: str | None = None
+) -> User:
+    """Update user information.
+    
+    Args:
+        db: Database session
+        user: User to update
+        name: New name (optional)
+        phone: New phone (optional)
+        avatar_url: New avatar URL (optional)
+    
+    Returns:
+        Updated user
+    """
+    if name is not None:
+        user.name = name
+    if phone is not None:
+        user.phone = phone
+    if avatar_url is not None:
+        user.avatar_url = avatar_url
+    
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    return user
+

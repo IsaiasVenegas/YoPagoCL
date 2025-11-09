@@ -125,11 +125,29 @@ async def websocket_session_endpoint(websocket: WebSocket, session_id: uuid.UUID
 
 async def send_session_state(websocket: WebSocket, session_id: uuid.UUID, db: Session):
     """Send complete session state to a client."""
+    from models.users import User
+    
     session = db.get(TableSession, session_id)
     if not session:
         return
     
     participants = get_participants_by_session_id(db, session_id)
+    
+    # Load user information for participants
+    participant_data = []
+    for p in participants:
+        participant_dict = {
+            "id": str(p.id),
+            "user_id": str(p.user_id) if p.user_id else None,
+            "joined_at": p.joined_at.isoformat()
+        }
+        # If participant has a user_id, load user information
+        if p.user_id:
+            user = db.get(User, p.user_id)
+            if user:
+                participant_dict["user_name"] = user.name
+                participant_dict["user_avatar_url"] = user.avatar_url
+        participant_data.append(participant_dict)
     
     order_items = get_order_items_by_session_id(db, session_id)
     
@@ -144,11 +162,7 @@ async def send_session_state(websocket: WebSocket, session_id: uuid.UUID, db: Se
             "locked": session.locked,
             "locked_by_user_id": str(session.locked_by_user_id) if session.locked_by_user_id else None
         },
-        participants=[{
-            "id": str(p.id),
-            "user_id": str(p.user_id) if p.user_id else None,
-            "joined_at": p.joined_at.isoformat()
-        } for p in participants],
+        participants=participant_data,
         order_items=[{
             "id": str(item.id),
             "item_name": item.item_name,
@@ -176,16 +190,32 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
         existing = get_participant_by_session_and_user(db, session_id, msg.user_id)
         
         if not existing:
+            from models.users import User
+            
             participant = create_participant(db, session_id, msg.user_id)
             
             # Track this websocket -> participant mapping
             _websocket_participants[websocket] = participant.id
             
+            # Send updated session state to the joining client
+            await send_session_state(websocket, session_id, db)
+            
+            # Load user information for broadcast message
+            user_name = None
+            user_avatar_url = None
+            if participant.user_id:
+                user = db.get(User, participant.user_id)
+                if user:
+                    user_name = user.name
+                    user_avatar_url = user.avatar_url
+            
             # Broadcast to others
             broadcast_msg = ParticipantJoinedMessage(
                 participant_id=participant.id,
                 user_id=participant.user_id,
-                joined_at=participant.joined_at.isoformat()
+                joined_at=participant.joined_at.isoformat(),
+                user_name=user_name,
+                user_avatar_url=user_avatar_url
             )
             await manager.broadcast_to_session(
                 broadcast_msg.model_dump(mode='json'),
@@ -195,6 +225,8 @@ async def handle_join_session(websocket: WebSocket, session_id: uuid.UUID, data:
         else:
             # Track existing participant for this websocket
             _websocket_participants[websocket] = existing.id
+            # Send updated session state to the client
+            await send_session_state(websocket, session_id, db)
     except Exception as e:
         await websocket.send_json({
             "type": "error",

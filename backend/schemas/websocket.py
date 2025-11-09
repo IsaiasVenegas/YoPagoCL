@@ -64,6 +64,8 @@ class ParticipantJoinedMessage(BaseModel):
     participant_id: uuid.UUID
     user_id: Optional[uuid.UUID]
     joined_at: str
+    user_name: Optional[str] = None
+    user_avatar_url: Optional[str] = None
 
 
 class ParticipantLeftMessage(BaseModel):
