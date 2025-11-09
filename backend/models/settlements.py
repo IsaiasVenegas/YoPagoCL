@@ -9,6 +9,8 @@ from core.config import settings
 if TYPE_CHECKING:
     from models.invoices import Invoice
     from models.users import User
+    from models.table_sessions import TableSession
+    from models.wallet_transactions import WalletTransaction
 
 
 class Settlement(SQLModel, table=True):
@@ -20,6 +22,7 @@ class Settlement(SQLModel, table=True):
         sa_column_kwargs={"nullable": False}
     )
     invoice_id: uuid.UUID | None = Field(foreign_key="invoices.id", default=None, nullable=True)
+    table_session_id: uuid.UUID | None = Field(foreign_key="table_sessions.id", default=None, nullable=True)
     from_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)
     to_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)
     amount: int = Field(nullable=False)  # in centavos
@@ -33,6 +36,7 @@ class Settlement(SQLModel, table=True):
 
     # Relationships
     invoice: Optional["Invoice"] = Relationship(back_populates="settlement")
+    table_session: Optional["TableSession"] = Relationship(back_populates="settlement", sa_relationship_kwargs={"uselist": False})
     from_user_rel: "User" = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": lambda: [Settlement.__table__.c.from_user]
@@ -43,3 +47,4 @@ class Settlement(SQLModel, table=True):
             "foreign_keys": lambda: [Settlement.__table__.c.to_user]
         }
     )
+    wallet_transactions: list["WalletTransaction"] = Relationship(back_populates="settlement")

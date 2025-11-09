@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Relationship
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from core.config import settings
 
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from models.invoices import Invoice
     from models.restaurants import Restaurant
     from models.restaurant_tables import RestaurantTable
+    from models.settlements import Settlement
 
 
 class TableSession(SQLModel, table=True):
@@ -43,4 +44,5 @@ class TableSession(SQLModel, table=True):
     participants: list["TableParticipant"] = Relationship(back_populates="session")
     order_items: list["OrderItem"] = Relationship(back_populates="session")
     invoices: list["Invoice"] = Relationship(back_populates="session")
+    settlement: Optional["Settlement"] = Relationship(back_populates="table_session", sa_relationship_kwargs={"uselist": False})
 

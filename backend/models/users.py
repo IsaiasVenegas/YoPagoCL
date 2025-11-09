@@ -2,13 +2,14 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, DateTime, func
 from sqlmodel import SQLModel, Field, Index, Relationship
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from core.config import settings
 
 if TYPE_CHECKING:
     from models.groups import Group
     from models.group_members import GroupMember
+    from models.wallets import Wallet
 
 
 class User(SQLModel, table=True):
@@ -40,3 +41,4 @@ class User(SQLModel, table=True):
     # Relationships
     created_groups: list["Group"] = Relationship(back_populates="creator")
     group_memberships: list["GroupMember"] = Relationship(back_populates="user")
+    wallet: Optional["Wallet"] = Relationship(back_populates="user", sa_relationship_kwargs={"uselist": False})

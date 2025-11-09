@@ -21,11 +21,12 @@ def list_settlements(
     user_id: Optional[uuid.UUID] = Query(None, description="Filter by user (from_user or to_user)"),
     group_id: Optional[uuid.UUID] = Query(None, description="Filter by group"),
     invoice_id: Optional[uuid.UUID] = Query(None, description="Filter by invoice"),
+    table_session_id: Optional[uuid.UUID] = Query(None, description="Filter by table session"),
     db: SessionDep = None
 ):
     """List settlements with optional filters."""
     settlements = crud_settlements.list_settlements(
-        db, user_id=user_id, group_id=group_id, invoice_id=invoice_id
+        db, user_id=user_id, group_id=group_id, invoice_id=invoice_id, table_session_id=table_session_id
     )
     return settlements
 

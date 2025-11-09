@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class SettlementCreate(BaseModel):
     invoice_id: Optional[uuid.UUID] = None
+    table_session_id: Optional[uuid.UUID] = None
     from_user: uuid.UUID
     to_user: uuid.UUID
     amount: int = Field(..., description="Amount in centavos")
@@ -17,6 +18,7 @@ class SettlementCreate(BaseModel):
 class SettlementResponse(BaseModel):
     id: uuid.UUID
     invoice_id: Optional[uuid.UUID]
+    table_session_id: Optional[uuid.UUID]
     from_user: uuid.UUID
     to_user: uuid.UUID
     amount: int

@@ -11,6 +11,8 @@ from models.invoices import Invoice
 from models.settlements import Settlement
 from models.invoice_items import InvoiceItem
 from models.payment_reminders import PaymentReminder
+from models.wallets import Wallet
+from models.wallet_transactions import WalletTransaction
 
 __all__ = [
     "User",
@@ -26,4 +28,6 @@ __all__ = [
     "Settlement",
     "InvoiceItem",
     "PaymentReminder",
+    "Wallet",
+    "WalletTransaction",
 ]
