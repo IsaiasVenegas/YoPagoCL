@@ -199,13 +199,11 @@ def _validate_assignment_belongs_to_session(order_item: OrderItem, session_id: u
     return True, None
 
 
-def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, increase_number_of_assignments: bool = True) -> int:
+def _get_new_assignment_amount_per_person(order_item: OrderItem, db: Session, negative_adjustment: bool = False) -> int:
     """Get the new assignment amount for an order item."""
     total_amount = order_item.unit_price
     assignments = get_assignments_by_order_item_id(db, order_item.id)
-    if len(assignments) == 0:
-        return total_amount
-    new_amount_per_person = total_amount // (len(assignments) + (1 if increase_number_of_assignments else -1))
+    new_amount_per_person = total_amount // (len(assignments) + (-1 if negative_adjustment else 1))
     return new_amount_per_person
 
 async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: dict, db: Session):
@@ -243,7 +241,7 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
                 })
                 return
 
-        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db, True)
+        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db)
         
         assignment = create_assignment(
             db,
@@ -310,10 +308,11 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
             })
             return
         
+        # Calculate before deleting the assignment to prevent division by zero
+        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db, True)
+
         delete_assignment(db, msg.assignment_id)
         print(f"[WebSocket] Assignment {msg.assignment_id} deleted from database")
-
-        new_assignment_amount_per_person = _get_new_assignment_amount_per_person(order_item, db, False)
 
         # Update all assignments on the same order item
         assignments = get_assignments_by_order_item_id(db, order_item.id)
