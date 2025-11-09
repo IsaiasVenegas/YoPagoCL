@@ -79,6 +79,13 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface SelectableParticipantsMessage {
+  type: 'selectable_participants';
+  order_item_id: string;
+  selectable_participants: string[]; // Array of user_ids
+  current_participant_id: string | null;
+}
+
 export type WebSocketMessage =
   | SessionStateMessage
   | ParticipantJoinedMessage
@@ -87,7 +94,8 @@ export type WebSocketMessage =
   | AssignmentUpdatedMessage
   | AssignmentRemovedMessage
   | SummaryUpdatedMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | SelectableParticipantsMessage;
 
 export interface JoinSessionMessage {
   type: 'join_session';
@@ -113,11 +121,18 @@ export interface RemoveAssignmentMessage {
   assignment_id: string;
 }
 
+export interface GetSelectableParticipantsMessage {
+  type: 'get_selectable_participants';
+  order_item_id: string;
+  user_id: string;
+}
+
 export type OutgoingWebSocketMessage =
   | JoinSessionMessage
   | AssignItemMessage
   | UpdateAssignmentMessage
-  | RemoveAssignmentMessage;
+  | RemoveAssignmentMessage
+  | GetSelectableParticipantsMessage;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { StyleSheet, View, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, View, Alert, TouchableOpacity, ScrollView, Modal } from 'react-native';
 import {
   Box,
   VStack,
@@ -23,6 +23,7 @@ import {
   ItemAssignedMessage,
   AssignmentUpdatedMessage,
   AssignmentRemovedMessage,
+  SelectableParticipantsMessage,
 } from '@/services/websocket';
 
 // UUID regex pattern
@@ -43,6 +44,12 @@ export default function ScanScreen() {
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const [expandedAvatars, setExpandedAvatars] = useState<Set<string>>(new Set());
+  const [menuModalVisible, setMenuModalVisible] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
+  const [selectableParticipants, setSelectableParticipants] = useState<string[]>([]);
+  const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -171,6 +178,11 @@ export default function ScanScreen() {
       ) {
         // For participant changes, we might want to refresh the session state
         // or handle incrementally - for now, we'll just note it happened
+      } else if (message.type === 'selectable_participants') {
+        console.log('[WebSocket] selectable_participants received:', message);
+        setSelectableParticipants(message.selectable_participants);
+        setLoadingParticipants(false);
+        setParticipantsModalVisible(true);
       }
     });
 
@@ -374,6 +386,128 @@ export default function ScanScreen() {
       return participant.user_id.substring(0, 1).toUpperCase();
     }
     return '?';
+  };
+
+  // Handle menu button click
+  const handleMenuClick = (orderItemId: string, e: any) => {
+    e.stopPropagation();
+    setSelectedItemId(orderItemId);
+    setMenuModalVisible(true);
+  };
+
+  // Handle "Pagar por otro usuario" option
+  const handlePayForOthers = async () => {
+    if (!selectedItemId || !currentParticipantId || !sessionData) {
+      setError('Unable to get selectable participants');
+      setMenuModalVisible(false);
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      setError('User not found');
+      setMenuModalVisible(false);
+      return;
+    }
+
+    setMenuModalVisible(false);
+    setLoadingParticipants(true);
+    setSelectedParticipants(new Set());
+
+    try {
+      const message = {
+        type: 'get_selectable_participants',
+        order_item_id: selectedItemId,
+        user_id: user.id,
+      };
+      console.log('Sending get_selectable_participants message:', message);
+      websocketService.send(message);
+    } catch (error: any) {
+      console.error('Error sending get_selectable_participants message:', error);
+      setError(error.message || 'Failed to get selectable participants');
+      setLoadingParticipants(false);
+    }
+  };
+
+  // Handle participant selection toggle
+  const handleParticipantToggle = (userId: string) => {
+    setSelectedParticipants((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handle accept button in participants modal
+  const handleAcceptParticipants = () => {
+    if (!selectedItemId || !currentParticipantId || selectedParticipants.size === 0 || !sessionData) {
+      setParticipantsModalVisible(false);
+      setSelectedItemId(null);
+      setSelectedParticipants(new Set());
+      return;
+    }
+
+    const item = sessionData.order_items.find((i) => i.id === selectedItemId);
+    if (!item) {
+      setError('Item not found');
+      setParticipantsModalVisible(false);
+      setSelectedItemId(null);
+      setSelectedParticipants(new Set());
+      return;
+    }
+
+    // Send assignment for each selected participant
+    // The backend will automatically recalculate the amount per person
+    // We send the full item price, and the backend will divide it correctly
+    selectedParticipants.forEach((userId) => {
+      // Find participant by user_id
+      const participant = sessionData.participants.find((p) => p.user_id === userId);
+      if (!participant) {
+        console.warn(`Participant not found for user_id: ${userId}`);
+        return;
+      }
+
+      try {
+        // Send the full item price - the backend will recalculate the amount per person
+        // based on the total number of assignments
+        const message = {
+          type: 'assign_item',
+          order_item_id: selectedItemId,
+          creditor_id: currentParticipantId,
+          debtor_id: participant.id,
+          assigned_amount: item.unit_price, // Backend will recalculate this
+        };
+        console.log('Sending assign_item message for participant:', message);
+        websocketService.send(message);
+      } catch (error: any) {
+        console.error('Error sending assign_item message:', error);
+        setError(error.message || 'Failed to assign item');
+      }
+    });
+
+    setParticipantsModalVisible(false);
+    setSelectedItemId(null);
+    setSelectedParticipants(new Set());
+  };
+
+  // Handle cancel button in participants modal
+  const handleCancelParticipants = () => {
+    setParticipantsModalVisible(false);
+    setSelectedItemId(null);
+    setSelectedParticipants(new Set());
+    setSelectableParticipants([]);
+  };
+
+  // Get participant display name by user_id
+  const getParticipantDisplayName = (userId: string) => {
+    if (!sessionData) return userId.substring(0, 8);
+    const participant = sessionData.participants.find((p) => p.user_id === userId);
+    if (!participant) return userId.substring(0, 8);
+    return `User ${userId.substring(0, 8)}`;
   };
 
   // Handle item toggle
@@ -631,64 +765,74 @@ export default function ScanScreen() {
                               </VStack>
 
                               {/* Avatars on the right */}
-                              {allAssignments && allAssignments.assignments.length > 0 && (
-                                <HStack space="xs" style={{ flexShrink: 0, alignItems: 'center' }}>
-                                  {allAssignments.assignments.length === 1 ? (
-                                    // Single assignment - show only avatar
-                                    (() => {
-                                      const assignment = allAssignments.assignments[0];
-                                      const isCurrentUser = assignment.creditor_id === currentParticipantId;
-                                      return (
-                                        <Avatar
-                                          size="sm"
-                                          fallbackText={getInitials(assignment.creditor_id)}
-                                          style={{
-                                            borderWidth: isCurrentUser ? 2 : 0,
-                                            borderColor: '#4F46E5',
-                                          }}
-                                        />
-                                      );
-                                    })()
-                                  ) : (
-                                    // Multiple assignments - show first avatar + plus indicator
-                                    <>
-                                      {(() => {
-                                        const firstAssignment = allAssignments.assignments[0];
-                                        const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
+                              <HStack space="xs" style={{ flexShrink: 0, alignItems: 'center' }}>
+                                {allAssignments && allAssignments.assignments.length > 0 && (
+                                  <>
+                                    {allAssignments.assignments.length === 1 ? (
+                                      // Single assignment - show only avatar
+                                      (() => {
+                                        const assignment = allAssignments.assignments[0];
+                                        const isCurrentUser = assignment.creditor_id === currentParticipantId;
                                         return (
                                           <Avatar
                                             size="sm"
-                                            fallbackText={getInitials(firstAssignment.creditor_id)}
+                                            fallbackText={getInitials(assignment.creditor_id)}
                                             style={{
                                               borderWidth: isCurrentUser ? 2 : 0,
                                               borderColor: '#4F46E5',
                                             }}
                                           />
                                         );
-                                      })()}
-                                      <TouchableOpacity
-                                        onPress={(e) => {
-                                          e.stopPropagation();
-                                          setExpandedAvatars((prev) => {
-                                            const newSet = new Set(prev);
-                                            if (newSet.has(item.id)) {
-                                              newSet.delete(item.id);
-                                            } else {
-                                              newSet.add(item.id);
-                                            }
-                                            return newSet;
-                                          });
-                                        }}
-                                        className="w-6 h-6 rounded-full bg-background-100 items-center justify-center ml-1"
-                                      >
-                                        <Text className="text-typography-700 text-xs font-bold">
-                                          +{allAssignments.assignments.length - 1}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    </>
-                                  )}
-                                </HStack>
-                              )}
+                                      })()
+                                    ) : (
+                                      // Multiple assignments - show first avatar + plus indicator
+                                      <>
+                                        {(() => {
+                                          const firstAssignment = allAssignments.assignments[0];
+                                          const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
+                                          return (
+                                            <Avatar
+                                              size="sm"
+                                              fallbackText={getInitials(firstAssignment.creditor_id)}
+                                              style={{
+                                                borderWidth: isCurrentUser ? 2 : 0,
+                                                borderColor: '#4F46E5',
+                                              }}
+                                            />
+                                          );
+                                        })()}
+                                        <TouchableOpacity
+                                          onPress={(e) => {
+                                            e.stopPropagation();
+                                            setExpandedAvatars((prev) => {
+                                              const newSet = new Set(prev);
+                                              if (newSet.has(item.id)) {
+                                                newSet.delete(item.id);
+                                              } else {
+                                                newSet.add(item.id);
+                                              }
+                                              return newSet;
+                                            });
+                                          }}
+                                          className="w-6 h-6 rounded-full bg-background-100 items-center justify-center ml-1"
+                                        >
+                                          <Text className="text-typography-700 text-xs font-bold">
+                                            +{allAssignments.assignments.length - 1}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                                {/* Elipsis button */}
+                                <TouchableOpacity
+                                  onPress={(e) => handleMenuClick(item.id, e)}
+                                  className="w-8 h-8 rounded-full bg-background-100 items-center justify-center ml-2"
+                                  style={{ flexShrink: 0 }}
+                                >
+                                  <Text className="text-typography-700 text-lg font-bold">⋯</Text>
+                                </TouchableOpacity>
+                              </HStack>
                             </HStack>
                           </TouchableOpacity>
                           
@@ -762,6 +906,165 @@ export default function ScanScreen() {
             </Button>
           </VStack>
         </ScrollView>
+
+        {/* Menu Modal */}
+        <Modal
+          visible={menuModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setMenuModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            activeOpacity={1}
+            onPress={() => setMenuModalVisible(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              className="bg-background-0 rounded-lg p-4 min-w-[200px]"
+            >
+              <VStack space="md">
+                <Button
+                  onPress={handlePayForOthers}
+                  action="primary"
+                  variant="outline"
+                  size="md"
+                >
+                  <ButtonText>Pagar por otro usuario</ButtonText>
+                </Button>
+                <Button
+                  onPress={() => setMenuModalVisible(false)}
+                  action="secondary"
+                  variant="outline"
+                  size="md"
+                >
+                  <ButtonText>Cancelar</ButtonText>
+                </Button>
+              </VStack>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Participants Selection Modal */}
+        <Modal
+          visible={participantsModalVisible}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={handleCancelParticipants}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={handleCancelParticipants}
+            />
+            <Box className="bg-background-0 rounded-t-3xl p-6 max-h-[80%]">
+              <VStack space="lg">
+                <Heading size="xl" className="text-typography-900">
+                  Seleccionar participantes
+                </Heading>
+
+                {loadingParticipants ? (
+                  <VStack space="md" className="items-center py-8">
+                    <Spinner size="large" />
+                    <Text className="text-typography-600">
+                      Cargando participantes...
+                    </Text>
+                  </VStack>
+                ) : selectableParticipants.length === 0 ? (
+                  <Box className="py-8">
+                    <Text className="text-typography-600 text-center">
+                      No hay participantes disponibles para seleccionar
+                    </Text>
+                  </Box>
+                ) : (
+                  <ScrollView style={{ maxHeight: 400 }}>
+                    <VStack space="md">
+                      {selectableParticipants.map((userId) => {
+                        const isSelected = selectedParticipants.has(userId);
+                        return (
+                          <TouchableOpacity
+                            key={userId}
+                            onPress={() => handleParticipantToggle(userId)}
+                            className={`p-4 rounded-lg border-2 ${
+                              isSelected
+                                ? 'bg-primary-50 border-primary-600'
+                                : 'bg-background-0 border-typography-400'
+                            }`}
+                          >
+                            <HStack
+                              space="md"
+                              style={{ alignItems: 'center' }}
+                            >
+                              <View
+                                className={`w-6 h-6 rounded border-2 ${
+                                  isSelected
+                                    ? 'bg-primary-500 border-primary-600'
+                                    : 'bg-transparent border-typography-400'
+                                }`}
+                                style={{
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {isSelected && (
+                                  <Text className="text-white text-xs font-bold">
+                                    ✓
+                                  </Text>
+                                )}
+                              </View>
+                              <Text
+                                className={`${
+                                  isSelected
+                                    ? 'text-primary-900 font-semibold'
+                                    : 'text-typography-900'
+                                }`}
+                              >
+                                {getParticipantDisplayName(userId)}
+                              </Text>
+                            </HStack>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </VStack>
+                  </ScrollView>
+                )}
+
+                <HStack space="md" style={{ justifyContent: 'flex-end' }}>
+                  <Button
+                    onPress={handleCancelParticipants}
+                    action="secondary"
+                    variant="outline"
+                    size="md"
+                  >
+                    <ButtonText>Cancelar</ButtonText>
+                  </Button>
+                  <Button
+                    onPress={handleAcceptParticipants}
+                    action="primary"
+                    variant="solid"
+                    size="md"
+                    isDisabled={selectedParticipants.size === 0 || loadingParticipants}
+                  >
+                    <ButtonText>Aceptar</ButtonText>
+                  </Button>
+                </HStack>
+              </VStack>
+            </Box>
+          </View>
+        </Modal>
       </Box>
     );
   }
