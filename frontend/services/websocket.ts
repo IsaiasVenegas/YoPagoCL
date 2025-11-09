@@ -241,17 +241,9 @@ export class WebSocketService {
   }
 
   send(message: OutgoingWebSocketMessage) {
-    console.log('WebSocketService.send called', { 
-      message, 
-      readyState: this.ws?.readyState,
-      isOpen: this.ws?.readyState === WebSocket.OPEN,
-      wsExists: !!this.ws 
-    });
-    
     if (this.ws?.readyState === WebSocket.OPEN) {
       try {
         const messageStr = JSON.stringify(message);
-        console.log('Sending WebSocket message:', messageStr);
         this.ws.send(messageStr);
       } catch (error) {
         console.error('Error sending WebSocket message:', error);

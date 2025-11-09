@@ -160,6 +160,8 @@ export default function RegisterScreen() {
                     }
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    textContentType="emailAddress"
+                    autoComplete="email"
                   />
                 </Input>
               </VStack>
@@ -188,6 +190,9 @@ export default function RegisterScreen() {
                       setFormData({ ...formData, password: text })
                     }
                     secureTextEntry={!showPassword}
+                    textContentType="newPassword"
+                    autoComplete="password-new"
+                    passwordRules="minlength: 6;"
                   />
                   <InputSlot className="pr-3" onPress={handleTogglePassword}>
                     <InputIcon
@@ -208,6 +213,8 @@ export default function RegisterScreen() {
                       setFormData({ ...formData, confirmPassword: text })
                     }
                     secureTextEntry={!showConfirmPassword}
+                    textContentType="newPassword"
+                    autoComplete="password-new"
                   />
                   <InputSlot className="pr-3" onPress={handleToggleConfirmPassword}>
                     <InputIcon

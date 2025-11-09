@@ -138,7 +138,6 @@ export default function ScanScreen() {
             debtor_id: message.debtor_id,
             assigned_amount: message.assigned_amount,
           }];
-          console.log(`[WebSocket] item_assigned: ${prev.assignments.length} -> ${newAssignments.length} assignments`);
           return {
             ...prev,
             assignments: newAssignments,
@@ -167,7 +166,6 @@ export default function ScanScreen() {
           }
           const beforeCount = prev.assignments.length;
           const filtered = prev.assignments.filter((a) => a.id !== message.assignment_id);
-          console.log(`[WebSocket] assignment_removed: ${beforeCount} -> ${filtered.length} assignments`);
           return {
             ...prev,
             assignments: filtered,

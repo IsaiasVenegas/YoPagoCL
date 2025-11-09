@@ -143,6 +143,8 @@ export default function LoginScreen() {
                     }
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    textContentType="emailAddress"
+                    autoComplete="email"
                   />
                 </Input>
               </VStack>
@@ -157,6 +159,8 @@ export default function LoginScreen() {
                       setFormData({ ...formData, password: text })
                     }
                     secureTextEntry={!showPassword}
+                    textContentType="password"
+                    autoComplete="password"
                   />
                   <InputSlot className="pr-3" onPress={handleTogglePassword}>
                     <InputIcon
