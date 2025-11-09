@@ -78,13 +78,24 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({
-        detail: `HTTP error! status: ${response.status}`,
-      }));
+      const responseText = await response.text();
+      console.error('[API] Error response body:', responseText);
+      
+      let error: ApiError;
+      try {
+        error = JSON.parse(responseText);
+      } catch {
+        error = {
+          detail: `HTTP error! status: ${response.status}. Body: ${responseText}`,
+        };
+      }
+      
+      console.error('[API] Parsed error:', error);
       throw new Error(error.detail || `Request failed with status ${response.status}`);
     }
 
-    return response.json();
+    const responseData = await response.json();
+    return responseData;
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
@@ -107,6 +118,44 @@ class ApiService {
     });
     setAuthToken(null);
     setCurrentUser(null);
+  }
+
+  async topUpWallet(amount: number, currency: string = 'CLP'): Promise<any> {
+    const payload = {
+      amount: Math.round(amount * 100), // Convert to centavos
+      currency,
+    };
+    
+    try {
+      const response = await this.request('/api/wallets/top-up', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return response;
+    } catch (error: any) {
+      console.error('[API] Top-up wallet error:', error);
+      console.error('[API] Error message:', error.message);
+      console.error('[API] Error details:', error);
+      throw error;
+    }
+  }
+
+  async payBill(sessionId: string, groupId: string, amount: number, currency: string = 'CLP'): Promise<any> {
+    return this.request('/api/invoices/pay-bill', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: sessionId,
+        group_id: groupId,
+        amount: Math.round(amount * 100), // Convert to centavos
+        currency,
+      }),
+    });
+  }
+
+  async getUserWallet(userId: string): Promise<any> {
+    return this.request(`/api/wallets/users/${userId}`, {
+      method: 'GET',
+    });
   }
 }
 

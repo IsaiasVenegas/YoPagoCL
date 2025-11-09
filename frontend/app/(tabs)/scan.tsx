@@ -16,7 +16,7 @@ import {
   HStack,
   Avatar,
 } from '@/components/ui';
-import { getAuthToken, getCurrentUser } from '@/services/api';
+import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
 import {
   websocketService,
   WebSocketMessage,
@@ -26,6 +26,11 @@ import {
   AssignmentRemovedMessage,
   SelectableParticipantsMessage,
   PayingForParticipantsMessage,
+  SummaryUpdatedMessage,
+  AssignmentsValidatedMessage,
+  SessionFinalizedMessage,
+  SessionLockedMessage,
+  SessionUnlockedMessage,
 } from '@/services/websocket';
 
 // UUID regex pattern
@@ -58,6 +63,12 @@ export default function ScanScreen() {
   const slideAnim = useRef(new Animated.Value(300)).current;
   const participantsModalVisibleRef = useRef(false);
   const selectedItemIdRef = useRef<string | null>(null);
+  const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [assignmentsValidated, setAssignmentsValidated] = useState<{ all_assigned: boolean; unassigned_items: string[] } | null>(null);
+  const [sessionFinalized, setSessionFinalized] = useState(false);
+  const [payingBill, setPayingBill] = useState(false);
+  const [sessionLocked, setSessionLocked] = useState(false);
+  const [lockedByUserId, setLockedByUserId] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -121,6 +132,11 @@ export default function ScanScreen() {
         setSessionData(message);
         setWsConnected(true);
         setError(null);
+        // Update lock state from session data
+        if (message.session.locked !== undefined) {
+          setSessionLocked(message.session.locked);
+          setLockedByUserId(message.session.locked_by_user_id || null);
+        }
       } else if (message.type === 'error') {
         console.error('[WebSocket] Error message received:', message.message);
         setError(message.message);
@@ -193,7 +209,23 @@ export default function ScanScreen() {
         setSelectedParticipants(new Set(message.paying_for_participants));
         setLoadingParticipants(false);
         setParticipantsModalVisible(true);
-      }
+      } else if (message.type === 'summary_updated') {
+        setSummary(message.summary);
+      } else if (message.type === 'assignments_validated') {
+        setAssignmentsValidated({
+          all_assigned: message.all_assigned,
+          unassigned_items: message.unassigned_items,
+        });
+          } else if (message.type === 'session_finalized') {
+            setSessionFinalized(true);
+            Alert.alert('Session Finalized', 'The session has been finalized and is ready for invoices.');
+          } else if (message.type === 'session_locked') {
+            setSessionLocked(true);
+            setLockedByUserId(message.locked_by_user_id);
+          } else if (message.type === 'session_unlocked') {
+            setSessionLocked(false);
+            setLockedByUserId(null);
+          }
     });
 
     const unsubscribeConnect = websocketService.onConnect(() => {
@@ -505,6 +537,11 @@ export default function ScanScreen() {
   // Handle menu button click
   const handleMenuClick = (orderItemId: string, e: any) => {
     e.stopPropagation();
+    // Check if session is locked
+    if (sessionLocked) {
+      Alert.alert('Session Locked', 'The session is locked. Assignments cannot be modified.');
+      return;
+    }
     setSelectedItemId(orderItemId);
     setMenuModalVisible(true);
   };
@@ -690,8 +727,112 @@ export default function ScanScreen() {
     return `User ${userId.substring(0, 8)}`;
   };
 
+  // Handle request summary
+  const handleRequestSummary = () => {
+    if (!wsConnected || !websocketService.isConnected()) {
+      setError('WebSocket is not connected');
+      return;
+    }
+    try {
+      websocketService.send({ type: 'request_summary' });
+    } catch (error: any) {
+      setError(error.message || 'Failed to request summary');
+    }
+  };
+
+  // Handle validate assignments
+  const handleValidateAssignments = () => {
+    if (!wsConnected || !websocketService.isConnected()) {
+      setError('WebSocket is not connected');
+      return;
+    }
+    try {
+      websocketService.send({ type: 'validate_assignments' });
+    } catch (error: any) {
+      setError(error.message || 'Failed to validate assignments');
+    }
+  };
+
+  // Handle pay bill
+  const handlePayBill = async () => {
+    if (!sessionData || !sessionId) {
+      setError('Session data not available');
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      setError('User not found');
+      return;
+    }
+
+    // Calculate total amount user needs to pay
+    // User needs to pay for all items where they are the creditor (they selected to pay)
+    const userParticipant = sessionData.participants.find(
+      (p) => p.user_id === user.id
+    );
+    if (!userParticipant) {
+      setError('You are not a participant in this session');
+      return;
+    }
+
+    // Get all assignments where user is the creditor (they're paying for these items)
+    const userCreditorAssignments = sessionData.assignments.filter(
+      (a) => a.creditor_id === userParticipant.id
+    );
+    const totalAmount = userCreditorAssignments.reduce(
+      (sum, a) => sum + a.assigned_amount,
+      0
+    );
+
+    if (totalAmount === 0) {
+      Alert.alert('No Bills', 'You have no bills to pay in this session.');
+      return;
+    }
+
+    setPayingBill(true);
+    try {
+      // For now, we need a group_id - this should come from session or be selected
+      // For simplicity, we'll use a placeholder - in production, this should be selected
+      const groupId = sessionData.session.id; // This is a placeholder - should be actual group_id
+      
+      const response = await apiService.payBill(
+        sessionId,
+        groupId,
+        totalAmount / 100, // Convert from centavos to pesos
+        sessionData.session.currency
+      );
+      
+      Alert.alert('Payment Successful', `Your bill of ${(totalAmount / 100).toFixed(2)} ${sessionData.session.currency} has been paid from your wallet!`);
+      // Refresh session data - the WebSocket will update automatically
+    } catch (error: any) {
+      Alert.alert('Payment Failed', error.message || 'Failed to process payment');
+    } finally {
+      setPayingBill(false);
+    }
+  };
+
+
+  // Handle unlock session
+  const handleUnlockSession = () => {
+    if (!wsConnected || !websocketService.isConnected()) {
+      setError('WebSocket is not connected');
+      return;
+    }
+    try {
+      websocketService.send({ type: 'unlock_session' });
+    } catch (error: any) {
+      setError(error.message || 'Failed to unlock session');
+    }
+  };
+
   // Handle item toggle
   const handleItemToggle = (orderItemId: string, itemPrice: number) => {
+    // Check if session is locked
+    if (sessionLocked) {
+      Alert.alert('Session Locked', 'The session is locked. Assignments cannot be modified.');
+      return;
+    }
     
     if (!currentParticipantId || !sessionData) {
       const errorMsg = `Unable to assign items. Participant ID: ${currentParticipantId}, Session Data: ${!!sessionData}`;
@@ -788,8 +929,44 @@ export default function ScanScreen() {
     );
   }
 
-  // If session is connected, show session data
+  // If session is connected, check if it's finished
   if (sessionId && wsConnected && sessionData) {
+    // Check if session is finished (closed or paid)
+    const isSessionFinished = sessionData.session.status === 'closed' || sessionData.session.status === 'paid';
+    
+    if (isSessionFinished) {
+      return (
+        <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
+          <Box className="flex-1 bg-background-0 p-6">
+            <VStack space="lg" className="flex-1 justify-center items-center">
+              <Heading size="2xl" className="text-typography-900">
+                Session Finished
+              </Heading>
+              <Text className="text-typography-600 text-lg text-center">
+                This session has been completed and is no longer active.
+              </Text>
+              <Text className="text-typography-500 text-center mt-2">
+                Session Status: {sessionData.session.status}
+              </Text>
+              {sessionData.session.total_amount && (
+                <Text className="text-typography-700 font-semibold mt-2">
+                  Total Amount: {sessionData.session.total_amount / 100} {sessionData.session.currency}
+                </Text>
+              )}
+              <Button
+                onPress={handleRescan}
+                action="primary"
+                variant="outline"
+                size="lg"
+                className="mt-6"
+              >
+                <ButtonText>Scan Another QR Code</ButtonText>
+              </Button>
+            </VStack>
+          </Box>
+        </SafeAreaView>
+      );
+    }
 
     return (
       <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-background-0">
@@ -863,7 +1040,8 @@ export default function ScanScreen() {
                             onPress={() => {
                               handleItemToggle(item.id, item.unit_price);
                             }}
-                            activeOpacity={0.7}
+                            activeOpacity={sessionLocked ? 1 : 0.7}
+                            disabled={sessionLocked}
                           >
                             <HStack
                               className={`p-3 rounded-lg border-2 ${borderClass}`}
@@ -1053,7 +1231,8 @@ export default function ScanScreen() {
                                 <TouchableOpacity
                                   onPress={(e) => handleMenuClick(item.id, e)}
                                   className="w-8 h-8 rounded-full bg-background-100 items-center justify-center ml-2"
-                                  style={{ flexShrink: 0 }}
+                                  style={{ flexShrink: 0, opacity: sessionLocked ? 0.5 : 1 }}
+                                  disabled={sessionLocked}
                                 >
                                   <Text className="text-typography-700 text-lg font-bold">⋯</Text>
                                 </TouchableOpacity>
@@ -1129,8 +1308,101 @@ export default function ScanScreen() {
                       Your Total: {getUserTotal / 100} {sessionData.session.currency}
                     </Text>
                   )}
+                  {summary && (
+                    <VStack space="xs" className="mt-2">
+                      <Text className="text-typography-700 font-semibold">Summary:</Text>
+                      {Object.entries(summary).map(([participantId, amount]) => (
+                        <Text key={participantId} className="text-typography-600 text-sm">
+                          Participant {participantId.substring(0, 8)}: {amount / 100} {sessionData.session.currency}
+                        </Text>
+                      ))}
+                    </VStack>
+                  )}
+                      {assignmentsValidated && sessionLocked && (
+                        <VStack space="xs" className="mt-2">
+                          <Text className={`font-semibold ${
+                            assignmentsValidated.all_assigned ? 'text-success-700' : 'text-warning-700'
+                          }`}>
+                            {assignmentsValidated.all_assigned 
+                              ? '✓ All items are fully assigned' 
+                              : `${assignmentsValidated.unassigned_items.length} items not fully assigned`}
+                          </Text>
+                        </VStack>
+                      )}
                 </VStack>
               </Box>
+
+              {/* Action Buttons */}
+              <VStack space="sm" className="mt-4">
+                <Button
+                  onPress={handleRequestSummary}
+                  action="secondary"
+                  variant="outline"
+                  size="lg"
+                >
+                  <ButtonText>View Summary</ButtonText>
+                </Button>
+
+                {sessionLocked ? (
+                  (() => {
+                    const user = getCurrentUser();
+                    const isCurrentUserLocked = user && lockedByUserId === user.id;
+                    return isCurrentUserLocked ? (
+                      <Button
+                        onPress={handleUnlockSession}
+                        action="secondary"
+                        variant="outline"
+                        size="lg"
+                        className="border-warning-600"
+                      >
+                        <ButtonText className="text-warning-700">Unlock Session</ButtonText>
+                      </Button>
+                    ) : (
+                      <Box className="bg-warning-50 p-4 rounded-lg border-2 border-warning-600">
+                        <Text className="text-warning-900 font-semibold text-center">
+                          Session is locked. Assignments cannot be modified.
+                        </Text>
+                      </Box>
+                    );
+                  })()
+                ) : (
+                  <Button
+                    onPress={handleValidateAssignments}
+                    action="secondary"
+                    variant="outline"
+                    size="lg"
+                  >
+                    <ButtonText>Lock to pay</ButtonText>
+                  </Button>
+                )}
+
+                    {assignmentsValidated?.all_assigned && sessionLocked && (
+                      <Button
+                        onPress={handlePayBill}
+                        disabled={payingBill}
+                        action="primary"
+                        variant="solid"
+                        size="lg"
+                      >
+                        {payingBill ? (
+                          <>
+                            <Spinner size="small" />
+                            <ButtonText className="ml-2">Processing Payment...</ButtonText>
+                          </>
+                        ) : (
+                          <ButtonText>Pay my bill</ButtonText>
+                        )}
+                      </Button>
+                    )}
+
+                    {sessionFinalized && (
+                      <Box className="bg-success-50 p-4 rounded-lg border-2 border-success-600">
+                        <Text className="text-success-900 font-semibold text-center">
+                          ✓ Session Finalized - Ready for Invoices
+                        </Text>
+                      </Box>
+                    )}
+              </VStack>
             </VStack>
 
             <Button
@@ -1417,11 +1689,42 @@ export default function ScanScreen() {
         </Box>
       )}
 
-      {scanned && !wsConnected && !isProcessingScanRef.current && (
+      {scanned && !wsConnected && !isProcessingScanRef.current && !error && (
         <Box className="pt-4 pb-12">
           <VStack space="sm" className="items-center">
             <Spinner size="small" />
             <Text className="text-typography-600">Connecting to session...</Text>
+            <Button
+              onPress={handleRescan}
+              action="secondary"
+              variant="outline"
+              size="lg"
+              className="mt-4"
+            >
+              <ButtonText>Scan Another QR Code</ButtonText>
+            </Button>
+          </VStack>
+        </Box>
+      )}
+
+      {scanned && !wsConnected && !isProcessingScanRef.current && error && (
+        <Box className="pt-4 pb-12 px-4">
+          <VStack space="md" className="items-center">
+            <UIAlert action="error" variant="solid">
+              <AlertText>{error}</AlertText>
+            </UIAlert>
+            <Text className="text-typography-600 text-center">
+              Failed to connect to session. Please try again or scan another QR code.
+            </Text>
+            <Button
+              onPress={handleRescan}
+              action="primary"
+              variant="outline"
+              size="lg"
+              className="mt-4"
+            >
+              <ButtonText>Scan Another QR Code</ButtonText>
+            </Button>
           </VStack>
         </Box>
       )}

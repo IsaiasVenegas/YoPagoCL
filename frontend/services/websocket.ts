@@ -16,6 +16,8 @@ export interface SessionStateMessage {
     status: string;
     total_amount: number;
     currency: string;
+    locked?: boolean;
+    locked_by_user_id?: string | null;
   };
   participants: Array<{
     id: string;
@@ -91,6 +93,28 @@ export interface PayingForParticipantsMessage {
   paying_for_participants: string[]; // Array of user_ids
 }
 
+export interface AssignmentsValidatedMessage {
+  type: 'assignments_validated';
+  all_assigned: boolean;
+  unassigned_items: string[];
+}
+
+export interface SessionFinalizedMessage {
+  type: 'session_finalized';
+  session_id: string;
+  total_amount: number;
+  ready_for_invoices: boolean;
+}
+
+export interface SessionLockedMessage {
+  type: 'session_locked';
+  locked_by_user_id: string;
+}
+
+export interface SessionUnlockedMessage {
+  type: 'session_unlocked';
+}
+
 export type WebSocketMessage =
   | SessionStateMessage
   | ParticipantJoinedMessage
@@ -101,7 +125,11 @@ export type WebSocketMessage =
   | SummaryUpdatedMessage
   | ErrorMessage
   | SelectableParticipantsMessage
-  | PayingForParticipantsMessage;
+  | PayingForParticipantsMessage
+  | AssignmentsValidatedMessage
+  | SessionFinalizedMessage
+  | SessionLockedMessage
+  | SessionUnlockedMessage;
 
 export interface JoinSessionMessage {
   type: 'join_session';
@@ -139,13 +167,33 @@ export interface GetPayingForParticipantsMessage {
   user_id: string;
 }
 
+export interface RequestSummaryMessage {
+  type: 'request_summary';
+}
+
+export interface ValidateAssignmentsMessage {
+  type: 'validate_assignments';
+}
+
+export interface FinalizeSessionMessage {
+  type: 'finalize_session';
+}
+
+export interface UnlockSessionMessage {
+  type: 'unlock_session';
+}
+
 export type OutgoingWebSocketMessage =
   | JoinSessionMessage
   | AssignItemMessage
   | UpdateAssignmentMessage
   | RemoveAssignmentMessage
   | GetSelectableParticipantsMessage
-  | GetPayingForParticipantsMessage;
+  | GetPayingForParticipantsMessage
+  | RequestSummaryMessage
+  | ValidateAssignmentsMessage
+  | UnlockSessionMessage
+  | FinalizeSessionMessage;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
