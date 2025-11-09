@@ -83,7 +83,6 @@ export interface SelectableParticipantsMessage {
   type: 'selectable_participants';
   order_item_id: string;
   selectable_participants: string[]; // Array of user_ids
-  current_participant_id: string | null;
 }
 
 export type WebSocketMessage =

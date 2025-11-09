@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { StyleSheet, View, Alert, TouchableOpacity, ScrollView, Modal } from 'react-native';
+import { StyleSheet, View, Alert, TouchableOpacity, ScrollView, Modal, Animated, Dimensions } from 'react-native';
 import {
   Box,
   VStack,
@@ -50,6 +50,7 @@ export default function ScanScreen() {
   const [selectableParticipants, setSelectableParticipants] = useState<string[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
   const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
     // Check if user is authenticated
@@ -214,6 +215,18 @@ export default function ScanScreen() {
       websocketService.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    // Animate modal content slide when opening
+    if (participantsModalVisible) {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    }
+  }, [participantsModalVisible]);
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
@@ -445,6 +458,7 @@ export default function ScanScreen() {
   // Handle accept button in participants modal
   const handleAcceptParticipants = () => {
     if (!selectedItemId || !currentParticipantId || selectedParticipants.size === 0 || !sessionData) {
+      slideAnim.setValue(300);
       setParticipantsModalVisible(false);
       setSelectedItemId(null);
       setSelectedParticipants(new Set());
@@ -454,6 +468,7 @@ export default function ScanScreen() {
     const item = sessionData.order_items.find((i) => i.id === selectedItemId);
     if (!item) {
       setError('Item not found');
+      slideAnim.setValue(300);
       setParticipantsModalVisible(false);
       setSelectedItemId(null);
       setSelectedParticipants(new Set());
@@ -489,6 +504,7 @@ export default function ScanScreen() {
       }
     });
 
+    slideAnim.setValue(300);
     setParticipantsModalVisible(false);
     setSelectedItemId(null);
     setSelectedParticipants(new Set());
@@ -496,6 +512,7 @@ export default function ScanScreen() {
 
   // Handle cancel button in participants modal
   const handleCancelParticipants = () => {
+    slideAnim.setValue(300);
     setParticipantsModalVisible(false);
     setSelectedItemId(null);
     setSelectedParticipants(new Set());
@@ -955,7 +972,7 @@ export default function ScanScreen() {
         <Modal
           visible={participantsModalVisible}
           transparent={true}
-          animationType="slide"
+          animationType="fade"
           onRequestClose={handleCancelParticipants}
         >
           <View
@@ -966,103 +983,122 @@ export default function ScanScreen() {
             }}
           >
             <TouchableOpacity
-              style={{ flex: 1 }}
+              style={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
               activeOpacity={1}
               onPress={handleCancelParticipants}
             />
-            <Box className="bg-background-0 rounded-t-3xl p-6 max-h-[80%]">
-              <VStack space="lg">
-                <Heading size="xl" className="text-typography-900">
-                  Seleccionar participantes
-                </Heading>
+            <Animated.View
+              style={{
+                transform: [{ translateY: slideAnim }],
+                maxHeight: Dimensions.get('window').height * 0.8,
+                width: '100%',
+              }}
+            >
+              <Box className="bg-background-0 rounded-t-3xl" style={{ maxHeight: Dimensions.get('window').height * 0.8, overflow: 'hidden' }}>
+                <View style={{ padding: 24 }}>
+                  <Heading size="xl" className="text-typography-900" style={{ marginBottom: 16 }}>
+                    Select users
+                  </Heading>
 
-                {loadingParticipants ? (
-                  <VStack space="md" className="items-center py-8">
-                    <Spinner size="large" />
-                    <Text className="text-typography-600">
-                      Cargando participantes...
-                    </Text>
-                  </VStack>
-                ) : selectableParticipants.length === 0 ? (
-                  <Box className="py-8">
-                    <Text className="text-typography-600 text-center">
-                      No hay participantes disponibles para seleccionar
-                    </Text>
-                  </Box>
-                ) : (
-                  <ScrollView style={{ maxHeight: 400 }}>
-                    <VStack space="md">
-                      {selectableParticipants.map((userId) => {
-                        const isSelected = selectedParticipants.has(userId);
-                        return (
-                          <TouchableOpacity
-                            key={userId}
-                            onPress={() => handleParticipantToggle(userId)}
-                            className={`p-4 rounded-lg border-2 ${
-                              isSelected
-                                ? 'bg-primary-50 border-primary-600'
-                                : 'bg-background-0 border-typography-400'
-                            }`}
-                          >
-                            <HStack
-                              space="md"
-                              style={{ alignItems: 'center' }}
-                            >
-                              <View
-                                className={`w-6 h-6 rounded border-2 ${
-                                  isSelected
-                                    ? 'bg-primary-500 border-primary-600'
-                                    : 'bg-transparent border-typography-400'
-                                }`}
-                                style={{
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
-                              >
-                                {isSelected && (
-                                  <Text className="text-white text-xs font-bold">
-                                    ✓
-                                  </Text>
-                                )}
-                              </View>
-                              <Text
-                                className={`${
-                                  isSelected
-                                    ? 'text-primary-900 font-semibold'
-                                    : 'text-typography-900'
-                                }`}
-                              >
-                                {getParticipantDisplayName(userId)}
-                              </Text>
-                            </HStack>
-                          </TouchableOpacity>
-                        );
-                      })}
+                  {loadingParticipants ? (
+                    <VStack space="md" className="items-center py-8">
+                      <Spinner size="large" />
+                      <Text className="text-typography-600">
+                        Loading users...
+                      </Text>
                     </VStack>
-                  </ScrollView>
-                )}
+                  ) : selectableParticipants.length === 0 ? (
+                    <Box className="py-8">
+                      <Text className="text-typography-600 text-center">
+                        There is no users available to select
+                      </Text>
+                    </Box>
+                  ) : (
+                    <View style={{ maxHeight: Dimensions.get('window').height * 0.5, marginBottom: 16 }}>
+                      <ScrollView 
+                        showsVerticalScrollIndicator={true}
+                        nestedScrollEnabled={true}
+                      >
+                        <VStack space="md">
+                          {selectableParticipants.map((userId) => {
+                            const isSelected = selectedParticipants.has(userId);
+                            return (
+                              <TouchableOpacity
+                                key={userId}
+                                onPress={() => handleParticipantToggle(userId)}
+                                className={`p-4 rounded-lg border-2 ${
+                                  isSelected
+                                    ? 'bg-primary-50 border-primary-600'
+                                    : 'bg-background-0 border-typography-400'
+                                }`}
+                              >
+                                <HStack
+                                  space="md"
+                                  style={{ alignItems: 'center' }}
+                                >
+                                  <View
+                                    className={`w-6 h-6 rounded border-2 ${
+                                      isSelected
+                                        ? 'bg-primary-500 border-primary-600'
+                                        : 'bg-transparent border-typography-400'
+                                    }`}
+                                    style={{
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    {isSelected && (
+                                      <Text className="text-white text-xs font-bold">
+                                        ✓
+                                      </Text>
+                                    )}
+                                  </View>
+                                  <Text
+                                    className={`${
+                                      isSelected
+                                        ? 'text-primary-900 font-semibold'
+                                        : 'text-typography-900'
+                                    }`}
+                                  >
+                                    {getParticipantDisplayName(userId)}
+                                  </Text>
+                                </HStack>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </VStack>
+                      </ScrollView>
+                    </View>
+                  )}
 
-                <HStack space="md" style={{ justifyContent: 'flex-end' }}>
-                  <Button
-                    onPress={handleCancelParticipants}
-                    action="secondary"
-                    variant="outline"
-                    size="md"
-                  >
-                    <ButtonText>Cancelar</ButtonText>
-                  </Button>
-                  <Button
-                    onPress={handleAcceptParticipants}
-                    action="primary"
-                    variant="solid"
-                    size="md"
-                    isDisabled={selectedParticipants.size === 0 || loadingParticipants}
-                  >
-                    <ButtonText>Aceptar</ButtonText>
-                  </Button>
-                </HStack>
-              </VStack>
-            </Box>
+                  <HStack space="md" style={{ justifyContent: 'flex-end' }}>
+                    <Button
+                      onPress={handleCancelParticipants}
+                      action="secondary"
+                      variant="outline"
+                      size="md"
+                    >
+                      <ButtonText>Cancelar</ButtonText>
+                    </Button>
+                    <Button
+                      onPress={handleAcceptParticipants}
+                      action="primary"
+                      variant="solid"
+                      size="md"
+                      isDisabled={selectedParticipants.size === 0 || loadingParticipants}
+                    >
+                      <ButtonText>Aceptar</ButtonText>
+                    </Button>
+                  </HStack>
+                </View>
+              </Box>
+            </Animated.View>
           </View>
         </Modal>
       </Box>
