@@ -94,6 +94,31 @@ export interface JoinSessionMessage {
   user_id: string;
 }
 
+export interface AssignItemMessage {
+  type: 'assign_item';
+  order_item_id: string;
+  creditor_id: string;
+  debtor_id?: string | null;
+  assigned_amount: number;
+}
+
+export interface UpdateAssignmentMessage {
+  type: 'update_assignment';
+  assignment_id: string;
+  assigned_amount: number;
+}
+
+export interface RemoveAssignmentMessage {
+  type: 'remove_assignment';
+  assignment_id: string;
+}
+
+export type OutgoingWebSocketMessage =
+  | JoinSessionMessage
+  | AssignItemMessage
+  | UpdateAssignmentMessage
+  | RemoveAssignmentMessage;
+
 export class WebSocketService {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
@@ -187,11 +212,27 @@ export class WebSocketService {
     this.reconnectAttempts = 0;
   }
 
-  send(message: JoinSessionMessage | object) {
+  send(message: OutgoingWebSocketMessage) {
+    console.log('WebSocketService.send called', { 
+      message, 
+      readyState: this.ws?.readyState,
+      isOpen: this.ws?.readyState === WebSocket.OPEN,
+      wsExists: !!this.ws 
+    });
+    
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      try {
+        const messageStr = JSON.stringify(message);
+        console.log('Sending WebSocket message:', messageStr);
+        this.ws.send(messageStr);
+      } catch (error) {
+        console.error('Error sending WebSocket message:', error);
+        throw error;
+      }
     } else {
-      console.warn('WebSocket is not open. Message not sent:', message);
+      const errorMsg = `WebSocket is not open. State: ${this.ws?.readyState}, Message: ${JSON.stringify(message)}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
   }
 
