@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
-from backend.models.order_items import OrderItem
+from models.order_items import OrderItem
 from sqlmodel import Session
 
 from api.websocket.manager import manager
@@ -328,7 +328,7 @@ async def handle_remove_assignment(websocket: WebSocket, session_id: uuid.UUID, 
                 broadcast_msg.model_dump(mode='json'),
                 session_id
             )
-            
+
         # Broadcast to all (including sender so they get the update too)
         broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
         # Use model_dump with mode='json' to ensure UUIDs are serialized as strings
