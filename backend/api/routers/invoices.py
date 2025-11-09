@@ -11,6 +11,7 @@ from crud import groups as crud_groups
 from crud import item_assignments as crud_assignments
 from crud import table_participants as crud_participants
 from crud import wallets as crud_wallets
+from crud import order_items as crud_order_items
 from schemas.invoices import (
     InvoiceCreate,
     InvoiceUpdate,
@@ -190,69 +191,47 @@ def _create_debtor_invoices(
     return created_invoices
 
 
-def _get_participants_with_assignments(
-    all_participants: list,
-    all_assignments: list
-) -> set[uuid.UUID]:
-    """Get set of user IDs who have assignments as creditors."""
-    participants_with_assignments = set()
-    for assignment in all_assignments:
-        participant = next(
-            (p for p in all_participants if p.id == assignment.creditor_id),
-            None
-        )
-        if participant and participant.user_id:
-            participants_with_assignments.add(participant.user_id)
-    return participants_with_assignments
-
-
-def _get_participants_who_paid(session_invoices: list) -> set[uuid.UUID]:
-    """Get set of user IDs who have paid invoices."""
-    participants_who_paid = set()
-    for invoice in session_invoices:
-        if invoice.from_user:
-            participants_who_paid.add(invoice.from_user)
-    return participants_who_paid
-
-
 async def _finalize_session_if_all_paid(
     db: SessionDep,
     session_id: uuid.UUID,
     session
 ) -> None:
-    """Check if all bills are paid and finalize session if so."""
+    """Check if all bills are paid by comparing paid invoices total with order items total."""
     import logging
     from datetime import datetime
     from models.invoices import Invoice
     from sqlmodel import select
     
     try:
-        all_participants = crud_participants.get_participants_by_session_id(db, session_id)
-        all_assignments = crud_assignments.get_assignments_by_session_id(db, session_id)
-        
-        session_invoices = db.exec(
+        # Get all paid invoices for the session
+        paid_invoices = db.exec(
             select(Invoice)
             .where(Invoice.session_id == session_id)
             .where(Invoice.status == "paid")
         ).all()
         
-        participants_with_assignments = _get_participants_with_assignments(all_participants, all_assignments)
-        participants_who_paid = _get_participants_who_paid(session_invoices)
+        # Sum the total_amount of all paid invoices
+        total_paid_amount = sum(invoice.total_amount for invoice in paid_invoices)
         
-        all_participants_paid = (
-            len(participants_with_assignments) > 0 and
-            participants_with_assignments.issubset(participants_who_paid)
-        )
+        # Get all order items for the session
+        order_items = crud_order_items.get_order_items_by_session_id(db, session_id)
         
-        if not all_participants_paid:
+        # Sum the unit_price of all order items
+        total_order_items_amount = sum(item.unit_price for item in order_items)
+        
+        # Check if the paid amount equals the order items total
+        if total_paid_amount != total_order_items_amount:
+            logging.info(
+                f"[Pay Bill] Bills not fully paid. Paid: {total_paid_amount} CLP, "
+                f"Order items total: {total_order_items_amount} CLP"
+            )
             return
         
-        logging.info(f"[Pay Bill] All bills paid. Auto-finalizing session {session_id}")
+        logging.info(f"[Pay Bill] All bills paid ({total_paid_amount} CLP). Auto-finalizing session {session_id}")
         if not session:
             return
         
-        total_amount = sum(a.assigned_amount for a in all_assignments)
-        session.total_amount = total_amount
+        session.total_amount = total_order_items_amount
         session.status = "closed"
         session.session_end = datetime.now()
         db.add(session)
@@ -263,7 +242,7 @@ async def _finalize_session_if_all_paid(
         
         broadcast_msg = SessionFinalizedMessage(
             session_id=session_id,
-            total_amount=total_amount,
+            total_amount=total_order_items_amount,
             ready_for_invoices=True
         )
         await manager.broadcast_to_session(
