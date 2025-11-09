@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
+
+# Import at runtime for forward reference resolution
+from schemas.auth import UserResponse
 
 
 class GroupCreate(BaseModel):
@@ -38,6 +41,7 @@ class GroupMemberResponse(BaseModel):
     group_id: uuid.UUID
     user_id: uuid.UUID
     joined_at: datetime
+    user: Optional["UserResponse"] = None
 
     class Config:
         from_attributes = True

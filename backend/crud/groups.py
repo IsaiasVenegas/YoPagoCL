@@ -105,6 +105,8 @@ def add_group_member(
     user_id: uuid.UUID
 ) -> GroupMember | None:
     """Add member to group."""
+    from sqlalchemy.orm import selectinload
+    
     # Check if user is already a member
     existing = db.exec(
         select(GroupMember).where(
@@ -121,7 +123,15 @@ def add_group_member(
     db.commit()
     db.refresh(member)
     
-    return member
+    # Eagerly load user relationship
+    statement = (
+        select(GroupMember)
+        .options(selectinload(GroupMember.user))
+        .where(GroupMember.id == member.id)
+    )
+    member_with_user = db.exec(statement).first()
+    
+    return member_with_user
 
 
 def remove_group_member(
@@ -150,9 +160,16 @@ def list_group_members(
     group_id: uuid.UUID
 ) -> list[GroupMember]:
     """List group members."""
-    return db.exec(
-        select(GroupMember).where(GroupMember.group_id == group_id)
-    ).all()
+    from sqlalchemy.orm import selectinload
+    
+    # Eagerly load user relationship using selectinload
+    statement = (
+        select(GroupMember)
+        .options(selectinload(GroupMember.user))
+        .where(GroupMember.group_id == group_id)
+    )
+    
+    return list(db.exec(statement).all())
 
 
 def check_user_in_group(
