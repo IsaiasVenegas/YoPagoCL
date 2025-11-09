@@ -18,7 +18,7 @@ import {
   Input,
   InputField,
 } from '@/components/ui';
-import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
+import { getAuthToken, getCurrentUser, apiService, API_BASE_URL } from '@/services/api';
 import {
   websocketService,
   WebSocketMessage,
@@ -213,12 +213,40 @@ export default function ScanScreen() {
             assignments: filtered,
           };
         });
-      } else if (
-        message.type === 'participant_joined' ||
-        message.type === 'participant_left'
-      ) {
-        // For participant changes, we might want to refresh the session state
-        // or handle incrementally - for now, we'll just note it happened
+      } else if (message.type === 'participant_joined') {
+        // Update session data to include the new participant
+        setSessionData((prev) => {
+          if (!prev) return prev;
+          // Check if participant already exists to prevent duplicates
+          const exists = prev.participants.some((p) => p.id === message.participant_id);
+          if (exists) {
+            return prev;
+          }
+          return {
+            ...prev,
+            participants: [
+              ...prev.participants,
+              {
+                id: message.participant_id,
+                user_id: message.user_id,
+                joined_at: message.joined_at,
+                user_name: message.user_name,
+                user_avatar_url: message.user_avatar_url,
+              },
+            ],
+          };
+        });
+      } else if (message.type === 'participant_left') {
+        // Remove participant from session data
+        setSessionData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            participants: prev.participants.filter(
+              (p) => p.id !== message.participant_id
+            ),
+          };
+        });
       } else if (message.type === 'selectable_participants') {
         setSelectableParticipants(message.selectable_participants);
         // Don't set loading to false here - wait for both messages
@@ -546,11 +574,27 @@ export default function ScanScreen() {
   // Helper to get initials from user ID or participant
   const getInitials = (participantId: string) => {
     const participant = getParticipantInfo(participantId);
+    if (participant?.user_name) {
+      return participant.user_name.substring(0, 1).toUpperCase();
+    }
     if (participant?.user_id) {
       // Use first letter of user ID as fallback
       return participant.user_id.substring(0, 1).toUpperCase();
     }
     return '?';
+  };
+
+  // Helper to get avatar source for a participant
+  const getAvatarSource = (participantId: string) => {
+    const participant = getParticipantInfo(participantId);
+    if (participant?.user_avatar_url) {
+      const avatarUrl = participant.user_avatar_url.startsWith('http')
+        ? participant.user_avatar_url
+        : `${API_BASE_URL}${participant.user_avatar_url}`;
+      // Note: No cache-busting needed here as WebSocket provides fresh session data
+      return { uri: avatarUrl };
+    }
+    return undefined;
   };
 
   // Handle menu button click
@@ -1026,10 +1070,26 @@ export default function ScanScreen() {
       return;
     }
     
-    if (!currentParticipantId || !sessionData) {
-      const errorMsg = `Unable to assign items. Participant ID: ${currentParticipantId}, Session Data: ${!!sessionData}`;
-      console.error(errorMsg);
-      setError(errorMsg);
+    if (!sessionData) {
+      Alert.alert('Session Not Ready', 'Please wait for the session to load.');
+      return;
+    }
+    
+    if (!currentParticipantId) {
+      const user = getCurrentUser();
+      if (!user) {
+        Alert.alert('Authentication Error', 'Please log in again.');
+        return;
+      }
+      // Check if user is in participants list but participant ID wasn't found
+      const userInParticipants = sessionData.participants.some(p => p.user_id === user.id);
+      if (userInParticipants) {
+        // This shouldn't happen, but if it does, refresh session state
+        Alert.alert('Please Wait', 'Your session is being set up. Please try again in a moment.');
+        return;
+      }
+      // User hasn't joined yet - this should be handled by the backend sending session_state after join
+      Alert.alert('Joining Session', 'Please wait while you join the session...');
       return;
     }
 
@@ -1341,6 +1401,7 @@ export default function ScanScreen() {
                                           <View style={{ position: 'relative' }}>
                                             <Avatar
                                               size="sm"
+                                              source={getAvatarSource(assignment.creditor_id)}
                                               fallbackText={getInitials(assignment.creditor_id)}
                                               style={{
                                                 borderWidth: isCurrentUser ? 2 : 0,
@@ -1350,6 +1411,7 @@ export default function ScanScreen() {
                                             {assignment.debtor_id && (
                                               <Avatar
                                                 size="xs"
+                                                source={getAvatarSource(assignment.debtor_id)}
                                                 fallbackText={getInitials(assignment.debtor_id)}
                                                 style={{
                                                   position: 'absolute',
@@ -1374,6 +1436,7 @@ export default function ScanScreen() {
                                             <View style={{ position: 'relative' }}>
                                               <Avatar
                                                 size="sm"
+                                                source={getAvatarSource(firstAssignment.creditor_id)}
                                                 fallbackText={getInitials(firstAssignment.creditor_id)}
                                                 style={{
                                                   borderWidth: isCurrentUser ? 2 : 0,
@@ -1383,6 +1446,7 @@ export default function ScanScreen() {
                                               {firstAssignment.debtor_id && (
                                                 <Avatar
                                                   size="xs"
+                                                  source={getAvatarSource(firstAssignment.debtor_id)}
                                                   fallbackText={getInitials(firstAssignment.debtor_id)}
                                                   style={{
                                                     position: 'absolute',
@@ -1453,6 +1517,7 @@ export default function ScanScreen() {
                                       <View style={{ position: 'relative' }}>
                                         <Avatar
                                           size="sm"
+                                          source={getAvatarSource(assignment.creditor_id)}
                                           fallbackText={getInitials(assignment.creditor_id)}
                                           style={{
                                             borderWidth: isCurrentUser ? 2 : 0,
@@ -1462,6 +1527,7 @@ export default function ScanScreen() {
                                         {assignment.debtor_id && (
                                           <Avatar
                                             size="xs"
+                                            source={getAvatarSource(assignment.debtor_id)}
                                             fallbackText={getInitials(assignment.debtor_id)}
                                             style={{
                                               position: 'absolute',

@@ -18,6 +18,7 @@ export interface User {
   email: string;
   name: string;
   phone: string | null;
+  avatar_url: string | null;
 }
 
 export interface AuthResponse {
@@ -221,6 +222,50 @@ class ApiService {
     return this.request(`/api/auth/users/search?email=${encodeURIComponent(email)}`, {
       method: 'GET',
     });
+  }
+
+  async getCurrentUser(): Promise<User> {
+    return this.request('/api/auth/users/me', {
+      method: 'GET',
+    });
+  }
+
+  async updateCurrentUser(data: { name?: string; phone?: string }): Promise<User> {
+    return this.request('/api/auth/users/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadAvatar(formData: FormData): Promise<User> {
+    const url = `${this.baseUrl}/api/auth/users/me/avatar`;
+    const headers: HeadersInit = {};
+
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    // Don't set Content-Type for FormData, let the browser set it with boundary
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      let error: ApiError;
+      try {
+        error = JSON.parse(responseText);
+      } catch {
+        error = {
+          detail: `HTTP error! status: ${response.status}. Body: ${responseText}`,
+        };
+      }
+      throw new Error(error.detail || `Request failed with status ${response.status}`);
+    }
+
+    return response.json();
   }
 
   // Invoices

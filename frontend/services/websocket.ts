@@ -23,6 +23,8 @@ export interface SessionStateMessage {
     id: string;
     user_id: string | null;
     joined_at: string;
+    user_name?: string | null;
+    user_avatar_url?: string | null;
   }>;
   order_items: Array<{
     id: string;
@@ -44,6 +46,8 @@ export interface ParticipantJoinedMessage {
   participant_id: string;
   user_id: string | null;
   joined_at: string;
+  user_name?: string | null;
+  user_avatar_url?: string | null;
 }
 
 export interface ParticipantLeftMessage {
