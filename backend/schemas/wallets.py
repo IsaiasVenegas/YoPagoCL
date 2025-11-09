@@ -41,13 +41,13 @@ class WalletTransactionCreate(BaseModel):
     wallet_id: uuid.UUID
     invoice_id: Optional[uuid.UUID] = None
     type: str = Field(..., description="payment_sent, payment_received, deposit, withdrawal")
-    amount: int = Field(..., description="Amount in centavos")
+    amount: int = Field(..., description="Amount in CLP")
     currency: str = Field(default="CLP", max_length=3)
     description: Optional[str] = None
 
 
 class WalletTopUpRequest(BaseModel):
-    amount: int = Field(..., description="Amount in centavos to add to wallet")
+    amount: int = Field(..., description="Amount in CLP to add to wallet")
     currency: str = Field(default="CLP", max_length=3)
 
 

@@ -21,7 +21,7 @@ class OrderItem(SQLModel, table=True):
     )
     session_id: uuid.UUID = Field(foreign_key="table_sessions.id", nullable=False)
     item_name: str = Field(max_length=200, nullable=False)
-    unit_price: int = Field(nullable=False)  # in centavos
+    unit_price: int = Field(nullable=False)  # in CLP
     ordered_at: datetime = Field(
         default_factory=lambda: datetime.now(settings.APP_TIMEZONE),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

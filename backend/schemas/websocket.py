@@ -20,7 +20,7 @@ class AssignItemMessage(BaseModel):
     order_item_id: uuid.UUID
     creditor_id: uuid.UUID  # Participant who will pay
     debtor_id: Optional[uuid.UUID] = None  # Participant who owes (if different)
-    assigned_amount: int  # Amount in centavos
+    assigned_amount: int  # Amount in CLP
 
 
 class GetSelectableParticipantsMessage(BaseModel):

@@ -20,7 +20,7 @@ class ItemAssignment(SQLModel, table=True):
     order_item_id: uuid.UUID = Field(foreign_key="order_items.id", nullable=False)
     creditor_id: uuid.UUID = Field(foreign_key="table_participants.id", nullable=False)
     debtor_id: Optional[uuid.UUID] = Field(foreign_key="table_participants.id", default=None, nullable=True)
-    assigned_amount: int = Field(nullable=False)  # in centavos
+    assigned_amount: int = Field(nullable=False)
 
     # Relationships
     order_item: "OrderItem" = Relationship(back_populates="assignments")

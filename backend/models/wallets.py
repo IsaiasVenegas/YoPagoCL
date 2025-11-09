@@ -20,7 +20,7 @@ class Wallet(SQLModel, table=True):
         sa_column_kwargs={"nullable": False}
     )
     user_id: uuid.UUID = Field(foreign_key="users.id", unique=True, nullable=False)
-    balance: int = Field(default=0, nullable=False)  # in centavos
+    balance: int = Field(default=0, nullable=False)  # in CLP
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(settings.APP_TIMEZONE),

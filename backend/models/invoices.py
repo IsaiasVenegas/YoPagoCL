@@ -27,7 +27,7 @@ class Invoice(SQLModel, table=True):
     group_id: uuid.UUID | None = Field(foreign_key="groups.id", default=None, nullable=True)
     from_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)  # User who pays
     to_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)  # User who receives
-    total_amount: int = Field(nullable=False)  # in centavos
+    total_amount: int = Field(nullable=False)  # in CLP
     description: str | None = Field(default=None, nullable=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(settings.APP_TIMEZONE),

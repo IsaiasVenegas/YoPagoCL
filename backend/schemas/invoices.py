@@ -13,7 +13,7 @@ class InvoiceCreate(BaseModel):
     group_id: uuid.UUID
     from_user: uuid.UUID  # User who pays
     to_user: uuid.UUID  # User who receives
-    total_amount: int = Field(..., description="Amount in centavos")
+    total_amount: int = Field(..., description="Amount in CLP")
     description: Optional[str] = None
     currency: str = Field(default="CLP", max_length=3)
     due_date: Optional[date] = None
@@ -56,7 +56,7 @@ class InvoiceMarkPaid(BaseModel):
 class BillPaymentRequest(BaseModel):
     session_id: uuid.UUID
     group_id: uuid.UUID
-    amount: int = Field(..., description="Total amount to pay in centavos")
+    amount: int = Field(..., description="Total amount to pay in CLP")
     currency: str = Field(default="CLP", max_length=3)
 
 

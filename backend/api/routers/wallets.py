@@ -103,9 +103,9 @@ async def top_up_wallet(
             "Content-Type": "application/json"
         }
         
-        # Convert centavos to pesos for Transbank
+        # Convert CLP to pesos for Transbank
         amount_pesos = top_up_data.amount / 100
-        logging.info(f"[Wallet Top-Up] Amount in centavos: {top_up_data.amount}, Amount in pesos: {amount_pesos}")
+        logging.info(f"[Wallet Top-Up] Amount in CLP: {top_up_data.amount}, Amount in pesos: {amount_pesos}")
         
         # Generate buy_order: must be max 26 chars, alphanumeric only
         # Format: "TOPUP" + timestamp (10 digits) + random (11 chars) = 26 chars total

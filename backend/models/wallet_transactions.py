@@ -22,7 +22,7 @@ class WalletTransaction(SQLModel, table=True):
     wallet_id: uuid.UUID = Field(foreign_key="wallets.id", nullable=False)
     invoice_id: uuid.UUID | None = Field(foreign_key="invoices.id", default=None, nullable=True)
     type: str = Field(nullable=False, max_length=50)  # payment_sent, payment_received, deposit, withdrawal
-    amount: int = Field(nullable=False)  # in centavos (positivo o negativo según tipo)
+    amount: int = Field(nullable=False)  # in CLP (positivo o negativo según tipo)
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     description: str | None = Field(default=None, nullable=True)
     created_at: datetime = Field(
