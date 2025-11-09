@@ -25,6 +25,8 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -36,6 +38,7 @@ export default function SettingsScreen() {
     } else {
       setIsAuthenticated(true);
       loadWallet();
+      loadTransactions();
     }
   }, []);
 
@@ -59,6 +62,21 @@ export default function SettingsScreen() {
           setRefreshing(false);
         }
       }
+    }
+  };
+
+  const loadTransactions = async () => {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    setLoadingTransactions(true);
+    try {
+      const transactionsData = await apiService.getWalletTransactions(user.id, 20);
+      setTransactions(transactionsData);
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    } finally {
+      setLoadingTransactions(false);
     }
   };
 
@@ -108,6 +126,7 @@ export default function SettingsScreen() {
       setStatusMessage(`Successfully added $${formatNumber(amountNum)} to your wallet!`);
       setAmount('');
       await loadWallet(); // Refresh wallet balance
+      await loadTransactions(); // Refresh transactions
     } catch (error: any) {
       setStatus('error');
       setStatusMessage(error.message || 'Failed to top up wallet. Please try again.');
@@ -212,6 +231,80 @@ export default function SettingsScreen() {
                     <Alert action={status === 'success' ? 'success' : 'error'} variant="solid">
                       <AlertText>{statusMessage}</AlertText>
                     </Alert>
+                  )}
+                </VStack>
+
+                {/* Transactions History */}
+                <VStack space="md" className="mt-6">
+                  <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Heading size="lg" className="text-typography-900">
+                      Recent Transactions
+                    </Heading>
+                    <Button
+                      onPress={loadTransactions}
+                      disabled={loadingTransactions}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {loadingTransactions ? (
+                        <Spinner size="small" />
+                      ) : (
+                        <ButtonText>Refresh</ButtonText>
+                      )}
+                    </Button>
+                  </HStack>
+
+                  {loadingTransactions ? (
+                    <Box className="items-center py-4">
+                      <Spinner size="small" />
+                    </Box>
+                  ) : transactions.length === 0 ? (
+                    <Box className="bg-background-50 p-4 rounded-lg">
+                      <Text className="text-typography-600 text-center">
+                        No transactions yet
+                      </Text>
+                    </Box>
+                  ) : (
+                    <VStack space="sm">
+                      {transactions.map((transaction) => {
+                        const amount = transaction.amount / 100;
+                        const isPositive = amount > 0;
+                        const formatAmount = (amt: number) => {
+                          const pesos = Math.floor(Math.abs(amt));
+                          return pesos.toLocaleString('es-CL');
+                        };
+
+                        return (
+                          <Box key={transaction.id} className="bg-background-50 p-3 rounded-lg border border-typography-200">
+                            <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                              <VStack space="xs" className="flex-1">
+                                <Text className="text-typography-900 font-medium">
+                                  {transaction.description || transaction.transaction_type || 'Transaction'}
+                                </Text>
+                                {transaction.created_at && (
+                                  <Text className="text-typography-600 text-xs">
+                                    {new Date(transaction.created_at).toLocaleDateString('es-CL', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </Text>
+                                )}
+                              </VStack>
+                              <Text
+                                className={`font-bold text-lg ${
+                                  isPositive ? 'text-success-600' : 'text-error-600'
+                                }`}
+                              >
+                                {isPositive ? '+' : '-'}${formatAmount(amount)} {transaction.currency || 'CLP'}
+                              </Text>
+                            </HStack>
+                          </Box>
+                        );
+                      })}
+                    </VStack>
                   )}
                 </VStack>
 

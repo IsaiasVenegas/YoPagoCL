@@ -15,6 +15,8 @@ import {
   Spinner,
   HStack,
   Avatar,
+  Input,
+  InputField,
 } from '@/components/ui';
 import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
 import {
@@ -69,6 +71,14 @@ export default function ScanScreen() {
   const [payingBill, setPayingBill] = useState(false);
   const [sessionLocked, setSessionLocked] = useState(false);
   const [lockedByUserId, setLockedByUserId] = useState<string | null>(null);
+  const [showGroupSelection, setShowGroupSelection] = useState(false);
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDescription, setNewGroupDescription] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -136,6 +146,15 @@ export default function ScanScreen() {
         if (message.session.locked !== undefined) {
           setSessionLocked(message.session.locked);
           setLockedByUserId(message.session.locked_by_user_id || null);
+        }
+        // If session is already locked when we connect, request validation
+        if (message.session.locked && !assignmentsValidated) {
+          // Request validation to show the status
+          setTimeout(() => {
+            if (websocketService.isConnected()) {
+              websocketService.send({ type: 'validate_assignments' });
+            }
+          }, 500);
         }
       } else if (message.type === 'error') {
         console.error('[WebSocket] Error message received:', message.message);
@@ -753,7 +772,7 @@ export default function ScanScreen() {
     }
   };
 
-  // Handle pay bill
+  // Handle pay bill - first show group selection
   const handlePayBill = async () => {
     if (!sessionData || !sessionId) {
       setError('Session data not available');
@@ -767,7 +786,6 @@ export default function ScanScreen() {
     }
 
     // Calculate total amount user needs to pay
-    // User needs to pay for all items where they are the creditor (they selected to pay)
     const userParticipant = sessionData.participants.find(
       (p) => p.user_id === user.id
     );
@@ -790,20 +808,194 @@ export default function ScanScreen() {
       return;
     }
 
-    setPayingBill(true);
+    // Get all debtors (users we're paying for)
+    const debtors = new Set<string>();
+    userCreditorAssignments.forEach((assignment) => {
+      if (assignment.debtor_id) {
+        const debtorParticipant = sessionData.participants.find(
+          (p) => p.id === assignment.debtor_id
+        );
+        if (debtorParticipant?.user_id) {
+          debtors.add(debtorParticipant.user_id);
+        }
+      }
+    });
+
+    // Load available groups for all debtors
+    setLoadingGroups(true);
+    setShowGroupSelection(true);
     try {
-      // For now, we need a group_id - this should come from session or be selected
-      // For simplicity, we'll use a placeholder - in production, this should be selected
-      const groupId = sessionData.session.id; // This is a placeholder - should be actual group_id
+      if (debtors.size > 0) {
+        const groupsPromises = Array.from(debtors).map((debtorId) =>
+          apiService.getAvailableGroups(debtorId, user.id)
+        );
+        const groupsArrays = await Promise.all(groupsPromises);
+        
+        // Find common groups across all debtors
+        if (groupsArrays.length > 0 && groupsArrays[0].length > 0) {
+          let commonGroups = groupsArrays[0];
+          for (let i = 1; i < groupsArrays.length; i++) {
+            const groupIds = new Set(commonGroups.map((g: any) => g.id));
+            commonGroups = groupsArrays[i].filter((g: any) => groupIds.has(g.id));
+          }
+          setAvailableGroups(commonGroups || []);
+        } else {
+          setAvailableGroups([]);
+        }
+      } else {
+        // If no debtors (user paying for themselves), get all user groups
+        const allGroups = await apiService.getGroups();
+        setAvailableGroups(allGroups || []);
+      }
+    } catch (error: any) {
+      console.error('Error loading groups:', error);
+      Alert.alert('Error', error.message || 'Failed to load groups');
+      setShowGroupSelection(false);
+      setAvailableGroups([]);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  // Handle create group from payment flow
+  const handleCreateGroupFromPayment = async () => {
+    if (!newGroupName.trim()) {
+      Alert.alert('Error', 'Group name is required');
+      return;
+    }
+
+    if (!sessionData) {
+      Alert.alert('Error', 'Session data not available');
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    setCreatingGroup(true);
+    try {
+      // Get all participant user IDs from the session
+      const participantUserIds = sessionData.participants
+        .map((p) => p.user_id)
+        .filter((id): id is string => id !== null && id !== undefined);
+
+      // Create group with all participants as members
+      const newGroup = await apiService.createGroup({
+        name: newGroupName.trim(),
+        description: newGroupDescription.trim() || undefined,
+        member_ids: participantUserIds,
+      });
+
+      // Use the newly created group for payment
+      setSelectedGroupId(newGroup.id);
+      setShowCreateGroup(false);
+      setNewGroupName('');
+      setNewGroupDescription('');
       
+      // Add the new group to available groups list
+      setAvailableGroups((prev) => [...(prev || []), newGroup]);
+      
+      // Reopen the group selection modal with the new group
+      setShowGroupSelection(true);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create group');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  // Helper to reload groups for payment
+  const loadGroupsForPayment = async () => {
+    const user = getCurrentUser();
+    if (!user || !sessionData) return;
+
+    const debtors = new Set<string>();
+    const userParticipant = sessionData.participants.find(
+      (p) => p.user_id === user.id
+    );
+    if (!userParticipant) return;
+
+    const userCreditorAssignments = sessionData.assignments.filter(
+      (a) => a.creditor_id === userParticipant.id
+    );
+
+    userCreditorAssignments.forEach((assignment) => {
+      if (assignment.debtor_id) {
+        const debtorParticipant = sessionData.participants.find(
+          (p) => p.id === assignment.debtor_id
+        );
+        if (debtorParticipant?.user_id) {
+          debtors.add(debtorParticipant.user_id);
+        }
+      }
+    });
+
+    if (debtors.size > 0) {
+      const groupsPromises = Array.from(debtors).map((debtorId) =>
+        apiService.getAvailableGroups(debtorId, user.id)
+      );
+      const groupsArrays = await Promise.all(groupsPromises);
+      
+      if (groupsArrays.length > 0 && groupsArrays[0].length > 0) {
+        let commonGroups = groupsArrays[0];
+        for (let i = 1; i < groupsArrays.length; i++) {
+          const groupIds = new Set(commonGroups.map((g: any) => g.id));
+          commonGroups = groupsArrays[i].filter((g: any) => groupIds.has(g.id));
+        }
+        setAvailableGroups(commonGroups || []);
+      } else {
+        setAvailableGroups([]);
+      }
+    } else {
+      const allGroups = await apiService.getGroups();
+      setAvailableGroups(allGroups || []);
+    }
+  };
+
+  // Actually process the payment after group is selected
+  const processPayment = async () => {
+    if (!sessionData || !sessionId || !selectedGroupId) {
+      Alert.alert('Error', 'Please select a group');
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    const userParticipant = sessionData.participants.find(
+      (p) => p.user_id === user.id
+    );
+    if (!userParticipant) {
+      Alert.alert('Error', 'You are not a participant in this session');
+      return;
+    }
+
+    const userCreditorAssignments = sessionData.assignments.filter(
+      (a) => a.creditor_id === userParticipant.id
+    );
+    const totalAmount = userCreditorAssignments.reduce(
+      (sum, a) => sum + a.assigned_amount,
+      0
+    );
+
+    setPayingBill(true);
+    setShowGroupSelection(false);
+    try {
       const response = await apiService.payBill(
         sessionId,
-        groupId,
+        selectedGroupId,
         totalAmount / 100, // Convert from centavos to pesos
         sessionData.session.currency
       );
       
       Alert.alert('Payment Successful', `Your bill of ${(totalAmount / 100).toFixed(2)} ${sessionData.session.currency} has been paid from your wallet!`);
+      setSelectedGroupId(null);
       // Refresh session data - the WebSocket will update automatically
     } catch (error: any) {
       Alert.alert('Payment Failed', error.message || 'Failed to process payment');
@@ -1318,15 +1510,21 @@ export default function ScanScreen() {
                       ))}
                     </VStack>
                   )}
-                      {assignmentsValidated && sessionLocked && (
+                      {sessionLocked && (
                         <VStack space="xs" className="mt-2">
-                          <Text className={`font-semibold ${
-                            assignmentsValidated.all_assigned ? 'text-success-700' : 'text-warning-700'
-                          }`}>
-                            {assignmentsValidated.all_assigned 
-                              ? '✓ All items are fully assigned' 
-                              : `${assignmentsValidated.unassigned_items.length} items not fully assigned`}
-                          </Text>
+                          {assignmentsValidated ? (
+                            <Text className={`font-semibold ${
+                              assignmentsValidated.all_assigned ? 'text-success-700' : 'text-warning-700'
+                            }`}>
+                              {assignmentsValidated.all_assigned 
+                                ? '✓ All items are fully assigned' 
+                                : `${assignmentsValidated.unassigned_items.length} items not fully assigned`}
+                            </Text>
+                          ) : (
+                            <Text className="text-typography-600 text-sm">
+                              Session is locked. Validating assignments...
+                            </Text>
+                          )}
                         </VStack>
                       )}
                 </VStack>
@@ -1376,7 +1574,7 @@ export default function ScanScreen() {
                   </Button>
                 )}
 
-                    {assignmentsValidated?.all_assigned && sessionLocked && (
+                    {sessionLocked && assignmentsValidated?.all_assigned && (
                       <Button
                         onPress={handlePayBill}
                         disabled={payingBill}
@@ -1644,6 +1842,210 @@ export default function ScanScreen() {
                 </View>
               </Box>
             </Animated.View>
+          </View>
+        </Modal>
+
+        {/* Group Selection Modal */}
+        <Modal
+          visible={showGroupSelection}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            setShowGroupSelection(false);
+            setSelectedGroupId(null);
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 24,
+            }}
+          >
+            <Box className="bg-background-0 rounded-lg p-6 w-full max-w-md">
+              <VStack space="md">
+                <Heading size="xl" className="text-typography-900">
+                  Select Group
+                </Heading>
+                <Text className="text-typography-600">
+                  Choose a group for this payment. All participants must be members of the selected group.
+                </Text>
+
+                {loadingGroups ? (
+                  <Box className="items-center py-8">
+                    <Spinner size="large" />
+                    <Text className="text-typography-600 mt-4">Loading groups...</Text>
+                  </Box>
+                ) : !availableGroups || availableGroups.length === 0 ? (
+                  <VStack space="md">
+                    <Box className="bg-warning-50 p-4 rounded-lg">
+                      <Text className="text-warning-700 text-center mb-2">
+                        No common groups found. Create a new group to continue with payment.
+                      </Text>
+                      <Text className="text-warning-600 text-sm text-center">
+                        All participants in this session will be automatically added to the group.
+                      </Text>
+                    </Box>
+                    <Button
+                      onPress={() => {
+                        setShowGroupSelection(false);
+                        setShowCreateGroup(true);
+                      }}
+                      action="primary"
+                      variant="solid"
+                      size="md"
+                    >
+                      <ButtonText>Create New Group</ButtonText>
+                    </Button>
+                  </VStack>
+                ) : (
+                  <ScrollView style={{ maxHeight: 300 }}>
+                    <VStack space="sm">
+                      {Array.isArray(availableGroups) && availableGroups.map((group) => (
+                        <TouchableOpacity
+                          key={group.id}
+                          onPress={() => setSelectedGroupId(group.id)}
+                        >
+                          <Box
+                            className={`p-4 rounded-lg border-2 ${
+                              selectedGroupId === group.id
+                                ? 'bg-primary-50 border-primary-600'
+                                : 'bg-background-0 border-typography-200'
+                            }`}
+                          >
+                            <HStack space="sm" style={{ alignItems: 'center' }}>
+                              <Text className="text-typography-900 font-semibold flex-1">
+                                {group.name}
+                              </Text>
+                              {selectedGroupId === group.id && (
+                                <Text className="text-primary-600 font-bold">✓</Text>
+                              )}
+                            </HStack>
+                            {group.slug && (
+                              <Text className="text-typography-600 text-sm">
+                                {group.slug}
+                              </Text>
+                            )}
+                          </Box>
+                        </TouchableOpacity>
+                      ))}
+                    </VStack>
+                  </ScrollView>
+                )}
+
+                <HStack space="sm" style={{ justifyContent: 'flex-end' }}>
+                  <Button
+                    onPress={() => {
+                      setShowGroupSelection(false);
+                      setSelectedGroupId(null);
+                    }}
+                    variant="outline"
+                    size="md"
+                  >
+                    <ButtonText>Cancel</ButtonText>
+                  </Button>
+                  <Button
+                    onPress={processPayment}
+                    disabled={!selectedGroupId || payingBill}
+                    action="primary"
+                    variant="solid"
+                    size="md"
+                  >
+                    {payingBill ? (
+                      <Spinner size="small" />
+                    ) : (
+                      <ButtonText>Pay</ButtonText>
+                    )}
+                  </Button>
+                </HStack>
+              </VStack>
+            </Box>
+          </View>
+        </Modal>
+
+        {/* Create Group Modal */}
+        <Modal
+          visible={showCreateGroup}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            setShowCreateGroup(false);
+            setNewGroupName('');
+            setNewGroupDescription('');
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 24,
+            }}
+          >
+            <Box className="bg-background-0 rounded-lg p-6 w-full max-w-md">
+              <VStack space="md">
+                <Heading size="xl" className="text-typography-900">
+                  Create New Group
+                </Heading>
+                <Text className="text-typography-600">
+                  Create a group to continue with payment. All participants in this session will be automatically added.
+                </Text>
+
+                <VStack space="sm">
+                  <Text className="text-typography-700 font-medium">Group Name *</Text>
+                  <Input>
+                    <InputField
+                      placeholder="Enter group name"
+                      value={newGroupName}
+                      onChangeText={setNewGroupName}
+                    />
+                  </Input>
+                </VStack>
+
+                <VStack space="sm">
+                  <Text className="text-typography-700 font-medium">Description (Optional)</Text>
+                  <Input>
+                    <InputField
+                      placeholder="Enter description"
+                      value={newGroupDescription}
+                      onChangeText={setNewGroupDescription}
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </Input>
+                </VStack>
+
+                <HStack space="sm" style={{ justifyContent: 'flex-end' }}>
+                  <Button
+                    onPress={() => {
+                      setShowCreateGroup(false);
+                      setNewGroupName('');
+                      setNewGroupDescription('');
+                    }}
+                    variant="outline"
+                    size="md"
+                  >
+                    <ButtonText>Cancel</ButtonText>
+                  </Button>
+                  <Button
+                    onPress={handleCreateGroupFromPayment}
+                    disabled={creatingGroup || !newGroupName.trim()}
+                    action="primary"
+                    variant="solid"
+                    size="md"
+                  >
+                    {creatingGroup ? (
+                      <Spinner size="small" />
+                    ) : (
+                      <ButtonText>Create & Continue</ButtonText>
+                    )}
+                  </Button>
+                </HStack>
+              </VStack>
+            </Box>
           </View>
         </Modal>
         </Box>
