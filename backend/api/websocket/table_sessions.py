@@ -335,6 +335,29 @@ async def handle_assign_item(websocket: WebSocket, session_id: uuid.UUID, data: 
                 })
                 return
 
+        # Validate that the creditor is not present as a debtor in the list of assignments for the same order item
+        assignments = get_assignments_by_order_item_id(db, order_item.id)
+        for assignment in assignments:
+            if assignment.debtor_id == msg.creditor_id:
+                delete_assignment(db, assignment.id)
+                # Broadcast to all
+                broadcast_msg = AssignmentRemovedMessage(assignment_id=assignment.id)
+                await manager.broadcast_to_session(
+                    broadcast_msg.model_dump(mode='json'),
+                    session_id
+                )
+                # Broadcast to all (including sender so they get the update too)
+                broadcast_msg = AssignmentRemovedMessage(assignment_id=msg.assignment_id)
+                # Use model_dump with mode='json' to ensure UUIDs are serialized as strings
+                broadcast_data = broadcast_msg.model_dump(mode='json')
+                print(f"[WebSocket] Broadcasting assignment_removed: {broadcast_data}")
+                print(f"[WebSocket] Active connections for session {session_id}: {len(manager.active_connections.get(session_id, set()))}")
+                await manager.broadcast_to_session(
+                    broadcast_data,
+                    session_id,
+                    exclude=None  # Include sender so they get the update too
+                )
+
         new_assignment_amount_per_person = _get_new_amount_per_assignment(order_item, db)
         
         assignment = create_assignment(
