@@ -7,4 +7,5 @@ export * from './hstack';
 export * from './alert';
 export * from './heading';
 export * from './spinner';
+export * from './avatar';
 
