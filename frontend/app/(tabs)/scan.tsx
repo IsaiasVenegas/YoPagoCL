@@ -849,7 +849,7 @@ export default function ScanScreen() {
                                         const assignment = allAssignments.assignments[0];
                                         const isCurrentUser = assignment.creditor_id === currentParticipantId;
                                         return (
-                                          <HStack space="xs" style={{ alignItems: 'center' }}>
+                                          <View style={{ position: 'relative' }}>
                                             <Avatar
                                               size="sm"
                                               fallbackText={getInitials(assignment.creditor_id)}
@@ -863,13 +863,15 @@ export default function ScanScreen() {
                                                 size="xs"
                                                 fallbackText={getInitials(assignment.debtor_id)}
                                                 style={{
-                                                  marginLeft: -8,
+                                                  position: 'absolute',
+                                                  bottom: -2,
+                                                  right: -2,
                                                   borderWidth: 1,
                                                   borderColor: '#fff',
                                                 }}
                                               />
                                             )}
-                                          </HStack>
+                                          </View>
                                         );
                                       })()
                                     ) : (
@@ -879,7 +881,7 @@ export default function ScanScreen() {
                                           const firstAssignment = allAssignments.assignments[0];
                                           const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
                                           return (
-                                            <HStack space="xs" style={{ alignItems: 'center' }}>
+                                            <View style={{ position: 'relative' }}>
                                               <Avatar
                                                 size="sm"
                                                 fallbackText={getInitials(firstAssignment.creditor_id)}
@@ -893,13 +895,15 @@ export default function ScanScreen() {
                                                   size="xs"
                                                   fallbackText={getInitials(firstAssignment.debtor_id)}
                                                   style={{
-                                                    marginLeft: -8,
+                                                    position: 'absolute',
+                                                    bottom: -2,
+                                                    right: -2,
                                                     borderWidth: 1,
                                                     borderColor: '#fff',
                                                   }}
                                                 />
                                               )}
-                                            </HStack>
+                                            </View>
                                           );
                                         })()}
                                         <TouchableOpacity
@@ -954,7 +958,7 @@ export default function ScanScreen() {
                                       space="xs"
                                       style={{ alignItems: 'center', marginRight: 8, marginBottom: 4 }}
                                     >
-                                      <HStack space="xs" style={{ alignItems: 'center' }}>
+                                      <View style={{ position: 'relative' }}>
                                         <Avatar
                                           size="sm"
                                           fallbackText={getInitials(assignment.creditor_id)}
@@ -968,13 +972,16 @@ export default function ScanScreen() {
                                             size="xs"
                                             fallbackText={getInitials(assignment.debtor_id)}
                                             style={{
-                                              marginLeft: -8,
+                                              position: 'absolute',
+                                              bottom: -2,
+                                              right: -6,
                                               borderWidth: 1,
                                               borderColor: '#fff',
+                                              marginRight: 4,
                                             }}
                                           />
                                         )}
-                                      </HStack>
+                                      </View>
                                       <Text className="text-typography-600 text-xs">
                                         {assignment.amount / 100} {sessionData.session.currency}
                                       </Text>
