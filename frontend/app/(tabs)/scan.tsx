@@ -306,6 +306,7 @@ export default function ScanScreen() {
   }, [sessionData]);
 
   // Get assignments for current user (for toggling)
+  // Only count assignments where debtor_id is null (user paying for themselves)
   const getUserAssignments = useMemo(() => {
     if (!sessionData || !currentParticipantId) {
       console.log('[getUserAssignments] No sessionData or currentParticipantId');
@@ -319,13 +320,15 @@ export default function ScanScreen() {
         id: a.id,
         order_item_id: a.order_item_id,
         creditor_id: a.creditor_id,
+        debtor_id: a.debtor_id,
       }))
     });
     
     // Group assignments by order_item_id and sum amounts (only for current user)
+    // Only count assignments where debtor_id is null (user paying for themselves)
     const assignmentMap = new Map<string, { ids: string[]; totalAmount: number }>();
     sessionData.assignments.forEach((assignment) => {
-      if (assignment.creditor_id === currentParticipantId) {
+      if (assignment.creditor_id === currentParticipantId && assignment.debtor_id === null) {
         const existing = assignmentMap.get(assignment.order_item_id);
         if (existing) {
           existing.ids.push(assignment.id);
@@ -357,25 +360,25 @@ export default function ScanScreen() {
     
     const assignmentMap = new Map<string, { 
       totalAmount: number; 
-      assignments: Array<{ creditor_id: string; amount: number }> 
+      assignments: Array<{ creditor_id: string; debtor_id: string | null; amount: number }> 
     }>();
     
     sessionData.assignments.forEach((assignment) => {
       const existing = assignmentMap.get(assignment.order_item_id);
       if (existing) {
         existing.totalAmount += assignment.assigned_amount;
-        // Only add unique participants
-        if (!existing.assignments.some(a => a.creditor_id === assignment.creditor_id)) {
-          existing.assignments.push({
-            creditor_id: assignment.creditor_id,
-            amount: assignment.assigned_amount,
-          });
-        }
+        // Add assignment with creditor and debtor info
+        existing.assignments.push({
+          creditor_id: assignment.creditor_id,
+          debtor_id: assignment.debtor_id,
+          amount: assignment.assigned_amount,
+        });
       } else {
         assignmentMap.set(assignment.order_item_id, {
           totalAmount: assignment.assigned_amount,
           assignments: [{
             creditor_id: assignment.creditor_id,
+            debtor_id: assignment.debtor_id,
             amount: assignment.assigned_amount,
           }],
         });
@@ -786,19 +789,32 @@ export default function ScanScreen() {
                                 {allAssignments && allAssignments.assignments.length > 0 && (
                                   <>
                                     {allAssignments.assignments.length === 1 ? (
-                                      // Single assignment - show only avatar
+                                      // Single assignment - show creditor avatar, and debtor avatar if exists
                                       (() => {
                                         const assignment = allAssignments.assignments[0];
                                         const isCurrentUser = assignment.creditor_id === currentParticipantId;
                                         return (
-                                          <Avatar
-                                            size="sm"
-                                            fallbackText={getInitials(assignment.creditor_id)}
-                                            style={{
-                                              borderWidth: isCurrentUser ? 2 : 0,
-                                              borderColor: '#4F46E5',
-                                            }}
-                                          />
+                                          <HStack space="xs" style={{ alignItems: 'center' }}>
+                                            <Avatar
+                                              size="sm"
+                                              fallbackText={getInitials(assignment.creditor_id)}
+                                              style={{
+                                                borderWidth: isCurrentUser ? 2 : 0,
+                                                borderColor: '#4F46E5',
+                                              }}
+                                            />
+                                            {assignment.debtor_id && (
+                                              <Avatar
+                                                size="xs"
+                                                fallbackText={getInitials(assignment.debtor_id)}
+                                                style={{
+                                                  marginLeft: -8,
+                                                  borderWidth: 1,
+                                                  borderColor: '#fff',
+                                                }}
+                                              />
+                                            )}
+                                          </HStack>
                                         );
                                       })()
                                     ) : (
@@ -808,14 +824,27 @@ export default function ScanScreen() {
                                           const firstAssignment = allAssignments.assignments[0];
                                           const isCurrentUser = firstAssignment.creditor_id === currentParticipantId;
                                           return (
-                                            <Avatar
-                                              size="sm"
-                                              fallbackText={getInitials(firstAssignment.creditor_id)}
-                                              style={{
-                                                borderWidth: isCurrentUser ? 2 : 0,
-                                                borderColor: '#4F46E5',
-                                              }}
-                                            />
+                                            <HStack space="xs" style={{ alignItems: 'center' }}>
+                                              <Avatar
+                                                size="sm"
+                                                fallbackText={getInitials(firstAssignment.creditor_id)}
+                                                style={{
+                                                  borderWidth: isCurrentUser ? 2 : 0,
+                                                  borderColor: '#4F46E5',
+                                                }}
+                                              />
+                                              {firstAssignment.debtor_id && (
+                                                <Avatar
+                                                  size="xs"
+                                                  fallbackText={getInitials(firstAssignment.debtor_id)}
+                                                  style={{
+                                                    marginLeft: -8,
+                                                    borderWidth: 1,
+                                                    borderColor: '#fff',
+                                                  }}
+                                                />
+                                              )}
+                                            </HStack>
                                           );
                                         })()}
                                         <TouchableOpacity
@@ -866,18 +895,31 @@ export default function ScanScreen() {
                                   const isCurrentUser = assignment.creditor_id === currentParticipantId;
                                   return (
                                     <HStack
-                                      key={`${assignment.creditor_id}-${index}`}
+                                      key={`${assignment.creditor_id}-${assignment.debtor_id || 'null'}-${index}`}
                                       space="xs"
                                       style={{ alignItems: 'center', marginRight: 8, marginBottom: 4 }}
                                     >
-                                      <Avatar
-                                        size="sm"
-                                        fallbackText={getInitials(assignment.creditor_id)}
-                                        style={{
-                                          borderWidth: isCurrentUser ? 2 : 0,
-                                          borderColor: '#4F46E5',
-                                        }}
-                                      />
+                                      <HStack space="xs" style={{ alignItems: 'center' }}>
+                                        <Avatar
+                                          size="sm"
+                                          fallbackText={getInitials(assignment.creditor_id)}
+                                          style={{
+                                            borderWidth: isCurrentUser ? 2 : 0,
+                                            borderColor: '#4F46E5',
+                                          }}
+                                        />
+                                        {assignment.debtor_id && (
+                                          <Avatar
+                                            size="xs"
+                                            fallbackText={getInitials(assignment.debtor_id)}
+                                            style={{
+                                              marginLeft: -8,
+                                              borderWidth: 1,
+                                              borderColor: '#fff',
+                                            }}
+                                          />
+                                        )}
+                                      </HStack>
                                       <Text className="text-typography-600 text-xs">
                                         {assignment.amount / 100} {sessionData.session.currency}
                                       </Text>
