@@ -10,7 +10,6 @@ from crud import invoices as crud_invoices
 from crud import groups as crud_groups
 from crud import item_assignments as crud_assignments
 from crud import table_participants as crud_participants
-from crud import settlements as crud_settlements
 from crud import wallets as crud_wallets
 from schemas.invoices import (
     InvoiceCreate,
@@ -31,7 +30,7 @@ def create_invoice(invoice_data: InvoiceCreate, db: SessionDep):
     """Create an invoice after closing a session. Validates that both users are in the selected group."""
     # Validate that both users are in the group
     is_valid, error_message = crud_invoices.validate_users_in_group(
-        db, invoice_data.group_id, invoice_data.creditor_id, invoice_data.debtor_id
+        db, invoice_data.group_id, invoice_data.from_user, invoice_data.to_user
     )
     
     if not is_valid:
@@ -96,12 +95,12 @@ def get_user_pending_invoices(user_id: uuid.UUID, db: SessionDep):
 
 @router.get("/available-groups", response_model=AvailableGroupsResponse)
 def get_available_groups(
-    debtor_id: uuid.UUID = Query(..., description="Debtor user ID"),
-    creditor_id: uuid.UUID = Query(..., description="Creditor user ID"),
+    from_user: uuid.UUID = Query(..., description="User who pays"),
+    to_user: uuid.UUID = Query(..., description="User who receives"),
     db: SessionDep = None
 ):
     """Get groups where both users are members."""
-    groups = crud_groups.get_common_groups_for_users(db, debtor_id, creditor_id)
+    groups = crud_groups.get_common_groups_for_users(db, from_user, to_user)
     
     return AvailableGroupsResponse(
         groups=[{"id": str(g.id), "name": g.name, "slug": g.slug} for g in groups]
@@ -114,7 +113,7 @@ async def pay_bill(
     current_user: CurrentUser,
     db: SessionDep
 ):
-    """Pay bills for a session using wallet balance. Creates invoices and settlements."""
+    """Pay bills for a session using wallet balance. Creates invoices and marks them as paid (creating wallet transactions)."""
     import logging
     
     logging.info(f"[Pay Bill] Request received for user: {current_user.id}")
@@ -205,12 +204,12 @@ async def pay_bill(
             logging.warning(f"[Pay Bill] Skipping invoice creation: {error_message}")
             continue
         
-        # Create invoice (current_user is creditor, debtor_user_id is debtor)
+        # Create invoice (current_user is from_user, debtor_user_id is to_user)
         invoice_data = InvoiceCreate(
             session_id=payment_data.session_id,
             group_id=payment_data.group_id,
-            creditor_id=current_user.id,
-            debtor_id=debtor_user_id,
+            from_user=current_user.id,
+            to_user=debtor_user_id,
             total_amount=total_amount,
             currency=payment_data.currency,
             invoice_items=[InvoiceItemCreate(item_assignment_id=a.id) for a in debtor_assigns]
@@ -218,21 +217,7 @@ async def pay_bill(
         
         invoice = crud_invoices.create_invoice(db, invoice_data)
         
-        # Create settlement
-        from schemas.settlements import SettlementCreate
-        settlement_data = SettlementCreate(
-            invoice_id=invoice.id,
-            table_session_id=payment_data.session_id,
-            from_user=current_user.id,
-            to_user=debtor_user_id,
-            amount=total_amount,
-            currency=payment_data.currency,
-            settlement_date=datetime.now(),
-            payment_method="wallet"
-        )
-        settlement = crud_settlements.create_settlement(db, settlement_data)
-        
-        # Mark invoice as paid
+        # Mark invoice as paid (this will create wallet transactions)
         crud_invoices.mark_invoice_paid(db, invoice.id, datetime.now())
         
         created_invoices.append(invoice)
@@ -271,11 +256,11 @@ async def pay_bill(
             if participant and participant.user_id:
                 participants_with_assignments.add(participant.user_id)
         
-        # Get all participants who have paid (have paid invoices as creditor)
+        # Get all participants who have paid (have paid invoices as from_user)
         participants_who_paid = set()
         for invoice in session_invoices:
-            if invoice.creditor_id:
-                participants_who_paid.add(invoice.creditor_id)
+            if invoice.from_user:
+                participants_who_paid.add(invoice.from_user)
         
         # Check if all participants with assignments have paid
         all_participants_paid = (

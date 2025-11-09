@@ -35,9 +35,10 @@ from models import (  # noqa: F401
     OrderItem,
     ItemAssignment,
     Invoice,
-    Settlement,
     InvoiceItem,
     PaymentReminder,
+    Wallet,
+    WalletTransaction,
 )
 
 target_metadata = SQLModel.metadata

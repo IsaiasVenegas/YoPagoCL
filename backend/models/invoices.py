@@ -9,9 +9,10 @@ from core.config import settings
 if TYPE_CHECKING:
     from models.table_sessions import TableSession
     from models.groups import Group
-    from models.settlements import Settlement
+    from models.users import User
     from models.invoice_items import InvoiceItem
     from models.payment_reminders import PaymentReminder
+    from models.wallet_transactions import WalletTransaction
 
 
 class Invoice(SQLModel, table=True):
@@ -24,6 +25,8 @@ class Invoice(SQLModel, table=True):
     )
     session_id: uuid.UUID = Field(foreign_key="table_sessions.id", nullable=False)
     group_id: uuid.UUID | None = Field(foreign_key="groups.id", default=None, nullable=True)
+    from_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)  # User who pays
+    to_user: uuid.UUID = Field(foreign_key="users.id", nullable=False)  # User who receives
     total_amount: int = Field(nullable=False)  # in centavos
     description: str | None = Field(default=None, nullable=True)
     created_at: datetime = Field(
@@ -32,7 +35,6 @@ class Invoice(SQLModel, table=True):
     )
     currency: str = Field(default="CLP", max_length=3, nullable=False)
     status: str = Field(default="pending", max_length=20, nullable=False)  # pending, paid, cancelled
-    # ELIMINADO: settlement_id
     due_date: date | None = Field(default=None, nullable=True)
     paid_at: datetime | None = Field(default=None, nullable=True)
     frequency_cycle: str = Field(default="daily", max_length=20, nullable=False)  # daily, weekly, monthly, none
@@ -44,9 +46,16 @@ class Invoice(SQLModel, table=True):
     # Relationships
     session: "TableSession" = Relationship(back_populates="invoices")
     group: Optional["Group"] = Relationship()
-    settlement: Optional["Settlement"] = Relationship(
-        back_populates="invoice",
-        sa_relationship_kwargs={"uselist": False}  # Uno-a-uno
+    from_user_rel: "User" = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": lambda: [Invoice.__table__.c.from_user]
+        }
+    )
+    to_user_rel: "User" = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": lambda: [Invoice.__table__.c.to_user]
+        }
     )
     invoice_items: list["InvoiceItem"] = Relationship(back_populates="invoice")
     payment_reminders: list["PaymentReminder"] = Relationship(back_populates="invoice")
+    wallet_transactions: list["WalletTransaction"] = Relationship(back_populates="invoice")

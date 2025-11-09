@@ -12,32 +12,32 @@ from schemas.invoices import InvoiceCreate, InvoiceUpdate, InvoiceMarkPaid
 def validate_users_in_group(
     db: Session,
     group_id: uuid.UUID,
-    creditor_id: uuid.UUID,
-    debtor_id: uuid.UUID
+    from_user: uuid.UUID,
+    to_user: uuid.UUID
 ) -> tuple[bool, Optional[str]]:
     """Validate that both users are in the group. Returns (is_valid, error_message)."""
     # Import here to avoid circular dependency
     from models.group_members import GroupMember
     
-    creditor_member = db.exec(
+    from_member = db.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
-            GroupMember.user_id == creditor_id
+            GroupMember.user_id == from_user
         )
     ).first()
     
-    if not creditor_member:
-        return False, f"Creditor user {creditor_id} is not a member of group {group_id}"
+    if not from_member:
+        return False, f"User {from_user} is not a member of group {group_id}"
     
-    debtor_member = db.exec(
+    to_member = db.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
-            GroupMember.user_id == debtor_id
+            GroupMember.user_id == to_user
         )
     ).first()
     
-    if not debtor_member:
-        return False, f"Debtor user {debtor_id} is not a member of group {group_id}"
+    if not to_member:
+        return False, f"User {to_user} is not a member of group {group_id}"
     
     return True, None
 
@@ -51,6 +51,8 @@ def create_invoice(
     invoice = Invoice(
         session_id=invoice_data.session_id,
         group_id=invoice_data.group_id,
+        from_user=invoice_data.from_user,
+        to_user=invoice_data.to_user,
         total_amount=invoice_data.total_amount,
         description=invoice_data.description,
         currency=invoice_data.currency,
@@ -98,34 +100,11 @@ def list_invoices(
     if status:
         query = query.where(Invoice.status == status)
     
-    # If user_id is provided, we need to filter by invoices where user is involved
-    # This requires checking invoice items and their assignments
+    # If user_id is provided, filter by invoices where user is from_user or to_user
     if user_id:
-        # Get invoices where user is creditor through assignments
-        creditor_invoices = db.exec(
-            select(Invoice)
-            .join(InvoiceItem, InvoiceItem.invoice_id == Invoice.id)
-            .join(ItemAssignment, ItemAssignment.id == InvoiceItem.item_assignment_id)
-            .join(TableParticipant, TableParticipant.id == ItemAssignment.creditor_id)
-            .where(TableParticipant.user_id == user_id)
-        ).all()
-        
-        # Get invoices where user is debtor through assignments
-        debtor_invoices = db.exec(
-            select(Invoice)
-            .join(InvoiceItem, InvoiceItem.invoice_id == Invoice.id)
-            .join(ItemAssignment, ItemAssignment.id == InvoiceItem.item_assignment_id)
-            .join(TableParticipant, TableParticipant.id == ItemAssignment.debtor_id)
-            .where(TableParticipant.user_id == user_id)
-        ).all()
-        
-        # Combine and deduplicate
-        all_invoice_ids = {inv.id for inv in creditor_invoices + debtor_invoices}
-        if all_invoice_ids:
-            query = query.where(Invoice.id.in_(all_invoice_ids))
-        else:
-            # No invoices found for this user
-            return []
+        query = query.where(
+            (Invoice.from_user == user_id) | (Invoice.to_user == user_id)
+        )
     
     return db.exec(query).all()
 
@@ -159,15 +138,48 @@ def mark_invoice_paid(
     invoice_id: uuid.UUID,
     paid_at: Optional[datetime] = None
 ) -> Invoice | None:
-    """Mark invoice as paid."""
+    """Mark invoice as paid and create wallet transactions."""
+    from crud.wallets import get_or_create_wallet, create_wallet_transaction
+    
     invoice = db.get(Invoice, invoice_id)
     if not invoice:
         return None
     
+    # Mark as paid
     invoice.status = "paid"
     invoice.paid_at = paid_at or datetime.now()
-    
     db.add(invoice)
+    db.flush()  # Flush to get invoice.id without committing
+    
+    # Get or create wallets for both users (without committing)
+    from_wallet = get_or_create_wallet(db, invoice.from_user, commit=False)
+    to_wallet = get_or_create_wallet(db, invoice.to_user, commit=False)
+    
+    # Create transaction for from_user (payment sent - negative amount)
+    create_wallet_transaction(
+        db=db,
+        wallet_id=from_wallet.id,
+        transaction_type="payment_sent",
+        amount=-invoice.total_amount,  # Negative because money goes out
+        invoice_id=invoice.id,
+        currency=invoice.currency,
+        description=f"Payment to user {invoice.to_user}",
+        commit=False
+    )
+    
+    # Create transaction for to_user (payment received - positive amount)
+    create_wallet_transaction(
+        db=db,
+        wallet_id=to_wallet.id,
+        transaction_type="payment_received",
+        amount=invoice.total_amount,  # Positive because money comes in
+        invoice_id=invoice.id,
+        currency=invoice.currency,
+        description=f"Payment from user {invoice.from_user}",
+        commit=False
+    )
+    
+    # Single commit for all operations
     db.commit()
     db.refresh(invoice)
     
@@ -178,33 +190,11 @@ def get_user_invoices(
     db: Session,
     user_id: uuid.UUID
 ) -> list[Invoice]:
-    """Get all invoices for a user (as creditor or debtor)."""
-    # Get invoices where user is involved through assignments
-    # This requires joining through invoice_items -> item_assignments -> table_participants
-    query_creditor = (
-        select(Invoice)
-        .join(InvoiceItem, InvoiceItem.invoice_id == Invoice.id)
-        .join(ItemAssignment, ItemAssignment.id == InvoiceItem.item_assignment_id)
-        .join(TableParticipant, TableParticipant.id == ItemAssignment.creditor_id)
-        .where(TableParticipant.user_id == user_id)
+    """Get all invoices for a user (as from_user or to_user)."""
+    query = select(Invoice).where(
+        (Invoice.from_user == user_id) | (Invoice.to_user == user_id)
     )
-    
-    invoices = db.exec(query_creditor).all()
-    
-    # Also get invoices where user is debtor
-    query_debtor = (
-        select(Invoice)
-        .join(InvoiceItem, InvoiceItem.invoice_id == Invoice.id)
-        .join(ItemAssignment, ItemAssignment.id == InvoiceItem.item_assignment_id)
-        .join(TableParticipant, TableParticipant.id == ItemAssignment.debtor_id)
-        .where(TableParticipant.user_id == user_id)
-    )
-    
-    debtor_invoices = db.exec(query_debtor).all()
-    
-    # Combine and deduplicate
-    all_invoices = {inv.id: inv for inv in invoices + debtor_invoices}
-    return list(all_invoices.values())
+    return db.exec(query).all()
 
 
 def get_user_pending_invoices(

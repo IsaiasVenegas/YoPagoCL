@@ -34,7 +34,7 @@ def create_wallet_transaction(
     wallet_id: uuid.UUID,
     transaction_type: str,
     amount: int,
-    settlement_id: Optional[uuid.UUID] = None,
+    invoice_id: Optional[uuid.UUID] = None,
     currency: str = "CLP",
     description: Optional[str] = None,
     commit: bool = True
@@ -47,7 +47,7 @@ def create_wallet_transaction(
     # Create transaction
     transaction = WalletTransaction(
         wallet_id=wallet_id,
-        settlement_id=settlement_id,
+        invoice_id=invoice_id,
         type=transaction_type,
         amount=amount,
         currency=currency,

@@ -11,8 +11,8 @@ class InvoiceItemCreate(BaseModel):
 class InvoiceCreate(BaseModel):
     session_id: uuid.UUID
     group_id: uuid.UUID
-    creditor_id: uuid.UUID  # User who paid
-    debtor_id: uuid.UUID  # User who owes
+    from_user: uuid.UUID  # User who pays
+    to_user: uuid.UUID  # User who receives
     total_amount: int = Field(..., description="Amount in centavos")
     description: Optional[str] = None
     currency: str = Field(default="CLP", max_length=3)
@@ -30,12 +30,13 @@ class InvoiceResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
     group_id: Optional[uuid.UUID]
+    from_user: uuid.UUID
+    to_user: uuid.UUID
     total_amount: int
     description: Optional[str]
     created_at: datetime
     currency: str
     status: str
-    settlement_id: Optional[uuid.UUID]
     due_date: Optional[date]
     paid_at: Optional[datetime]
     updated_at: datetime
