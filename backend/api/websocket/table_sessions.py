@@ -543,11 +543,11 @@ async def handle_request_summary(websocket: WebSocket, session_id: uuid.UUID, db
                 summary[creditor_id] = 0
             summary[creditor_id] += assignment.assigned_amount
         
-        # Broadcast to all
-        broadcast_msg = SummaryUpdatedMessage(summary=summary)
-        await manager.broadcast_to_session(
-            broadcast_msg.model_dump(mode='json'),
-            session_id
+        # Send to the user that requested the summary
+        personal_msg = SummaryUpdatedMessage(summary=summary)
+        await manager.send_personal_message(
+            personal_msg.model_dump(mode='json'),
+            websocket
         )
     
     except Exception as e:
