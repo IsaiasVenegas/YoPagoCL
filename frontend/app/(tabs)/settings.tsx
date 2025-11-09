@@ -279,7 +279,7 @@ export default function SettingsScreen() {
                             <HStack space="md" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                               <VStack space="xs" className="flex-1">
                                 <Text className="text-typography-900 font-medium">
-                                  {transaction.description || transaction.transaction_type || 'Transaction'}
+                                  {transaction.description || transaction.type || 'Transaction'}
                                 </Text>
                                 {transaction.created_at && (
                                   <Text className="text-typography-600 text-xs">
