@@ -85,6 +85,12 @@ export interface SelectableParticipantsMessage {
   selectable_participants: string[]; // Array of user_ids
 }
 
+export interface PayingForParticipantsMessage {
+  type: 'paying_for_participants';
+  order_item_id: string;
+  paying_for_participants: string[]; // Array of user_ids
+}
+
 export type WebSocketMessage =
   | SessionStateMessage
   | ParticipantJoinedMessage
@@ -94,7 +100,8 @@ export type WebSocketMessage =
   | AssignmentRemovedMessage
   | SummaryUpdatedMessage
   | ErrorMessage
-  | SelectableParticipantsMessage;
+  | SelectableParticipantsMessage
+  | PayingForParticipantsMessage;
 
 export interface JoinSessionMessage {
   type: 'join_session';
@@ -126,12 +133,19 @@ export interface GetSelectableParticipantsMessage {
   user_id: string;
 }
 
+export interface GetPayingForParticipantsMessage {
+  type: 'get_paying_for_participants';
+  order_item_id: string;
+  user_id: string;
+}
+
 export type OutgoingWebSocketMessage =
   | JoinSessionMessage
   | AssignItemMessage
   | UpdateAssignmentMessage
   | RemoveAssignmentMessage
-  | GetSelectableParticipantsMessage;
+  | GetSelectableParticipantsMessage
+  | GetPayingForParticipantsMessage;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;

@@ -24,6 +24,7 @@ import {
   AssignmentUpdatedMessage,
   AssignmentRemovedMessage,
   SelectableParticipantsMessage,
+  PayingForParticipantsMessage,
 } from '@/services/websocket';
 
 // UUID regex pattern
@@ -48,9 +49,12 @@ export default function ScanScreen() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
   const [selectableParticipants, setSelectableParticipants] = useState<string[]>([]);
+  const [payingForParticipants, setPayingForParticipants] = useState<string[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
+  const participantsModalVisibleRef = useRef(false);
+  const selectedItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -105,10 +109,8 @@ export default function ScanScreen() {
   useEffect(() => {
     // Set up websocket message listener
     const unsubscribe = websocketService.onMessage((message: WebSocketMessage) => {
-      console.log('[WebSocket] Message received:', message.type, message);
       
       if (message.type === 'session_state') {
-        console.log('[WebSocket] session_state received, assignments:', message.assignments.length);
         setSessionData(message);
         setWsConnected(true);
         setError(null);
@@ -117,7 +119,6 @@ export default function ScanScreen() {
         setError(message.message);
         // Don't set wsConnected to false on error - connection might still be open
       } else if (message.type === 'item_assigned') {
-        console.log('[WebSocket] item_assigned received:', message);
         // Update session data with new assignment
         setSessionData((prev) => {
           if (!prev) {
@@ -127,7 +128,6 @@ export default function ScanScreen() {
           // Check if assignment already exists to prevent duplicates
           const exists = prev.assignments.some((a) => a.id === message.assignment_id);
           if (exists) {
-            console.log('[WebSocket] item_assigned: assignment already exists, skipping');
             return prev;
           }
           
@@ -158,8 +158,8 @@ export default function ScanScreen() {
           };
         });
       } else if (message.type === 'assignment_removed') {
-        console.log('[WebSocket] assignment_removed received:', message.assignment_id);
         // Remove assignment
+        // Note: We don't update payingForParticipants here because changes are only applied when "Accept" is pressed
         setSessionData((prev) => {
           if (!prev) {
             console.warn('[WebSocket] assignment_removed: no previous session data');
@@ -180,8 +180,12 @@ export default function ScanScreen() {
         // For participant changes, we might want to refresh the session state
         // or handle incrementally - for now, we'll just note it happened
       } else if (message.type === 'selectable_participants') {
-        console.log('[WebSocket] selectable_participants received:', message);
         setSelectableParticipants(message.selectable_participants);
+        // Don't set loading to false here - wait for both messages
+      } else if (message.type === 'paying_for_participants') {
+        setPayingForParticipants(message.paying_for_participants);
+        // Set initial selected participants to the paying_for_participants
+        setSelectedParticipants(new Set(message.paying_for_participants));
         setLoadingParticipants(false);
         setParticipantsModalVisible(true);
       }
@@ -215,6 +219,12 @@ export default function ScanScreen() {
       websocketService.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    // Update refs when state changes
+    participantsModalVisibleRef.current = participantsModalVisible;
+    selectedItemIdRef.current = selectedItemId;
+  }, [participantsModalVisible, selectedItemId]);
 
   useEffect(() => {
     // Animate modal content slide when opening
@@ -309,20 +319,9 @@ export default function ScanScreen() {
   // Only count assignments where debtor_id is null (user paying for themselves)
   const getUserAssignments = useMemo(() => {
     if (!sessionData || !currentParticipantId) {
-      console.log('[getUserAssignments] No sessionData or currentParticipantId');
       return new Map();
     }
     
-    console.log('[getUserAssignments] Calculating assignments', {
-      totalAssignments: sessionData.assignments.length,
-      currentParticipantId,
-      assignments: sessionData.assignments.map(a => ({
-        id: a.id,
-        order_item_id: a.order_item_id,
-        creditor_id: a.creditor_id,
-        debtor_id: a.debtor_id,
-      }))
-    });
     
     // Group assignments by order_item_id and sum amounts (only for current user)
     // Only count assignments where debtor_id is null (user paying for themselves)
@@ -340,15 +339,6 @@ export default function ScanScreen() {
           });
         }
       }
-    });
-    
-    console.log('[getUserAssignments] Result:', {
-      mapSize: assignmentMap.size,
-      assignedItems: Array.from(assignmentMap.entries()).map(([itemId, data]) => ({
-        itemId,
-        assignmentIds: data.ids,
-        totalAmount: data.totalAmount,
-      }))
     });
     
     return assignmentMap;
@@ -443,23 +433,33 @@ export default function ScanScreen() {
     setMenuModalVisible(false);
     setLoadingParticipants(true);
     setSelectedParticipants(new Set());
+    setSelectableParticipants([]);
+    setPayingForParticipants([]);
 
     try {
-      const message = {
+      // Send both messages to get selectable and paying_for participants
+      const selectableMessage = {
         type: 'get_selectable_participants',
         order_item_id: selectedItemId,
         user_id: user.id,
       };
-      console.log('Sending get_selectable_participants message:', message);
-      websocketService.send(message);
+      websocketService.send(selectableMessage);
+
+      const payingForMessage = {
+        type: 'get_paying_for_participants',
+        order_item_id: selectedItemId,
+        user_id: user.id,
+      };
+      websocketService.send(payingForMessage);
     } catch (error: any) {
-      console.error('Error sending get_selectable_participants message:', error);
-      setError(error.message || 'Failed to get selectable participants');
+      console.error('Error sending get participants messages:', error);
+      setError(error.message || 'Failed to get participants');
       setLoadingParticipants(false);
     }
   };
 
   // Handle participant selection toggle
+  // Only updates local state - actual changes are applied when "Accept" is pressed
   const handleParticipantToggle = (userId: string) => {
     setSelectedParticipants((prev) => {
       const newSet = new Set(prev);
@@ -474,11 +474,13 @@ export default function ScanScreen() {
 
   // Handle accept button in participants modal
   const handleAcceptParticipants = () => {
-    if (!selectedItemId || !currentParticipantId || selectedParticipants.size === 0 || !sessionData) {
+    if (!selectedItemId || !currentParticipantId || !sessionData) {
       slideAnim.setValue(300);
       setParticipantsModalVisible(false);
       setSelectedItemId(null);
       setSelectedParticipants(new Set());
+      setSelectableParticipants([]);
+      setPayingForParticipants([]);
       return;
     }
 
@@ -489,13 +491,60 @@ export default function ScanScreen() {
       setParticipantsModalVisible(false);
       setSelectedItemId(null);
       setSelectedParticipants(new Set());
+      setSelectableParticipants([]);
+      setPayingForParticipants([]);
       return;
     }
 
-    // Send assignment for each selected participant
+    // Find users that need to be added (in selectedParticipants but not in payingForParticipants)
+    const newlySelected = Array.from(selectedParticipants).filter(
+      (userId) => !payingForParticipants.includes(userId)
+    );
+
+    // Find users that need to be removed (in payingForParticipants but not in selectedParticipants)
+    const toBeRemoved = payingForParticipants.filter(
+      (userId) => !selectedParticipants.has(userId)
+    );
+
+    // Remove assignments for users that were unselected
+    toBeRemoved.forEach((userId) => {
+      const participant = sessionData.participants.find((p) => p.user_id === userId);
+      if (!participant) {
+        console.warn(`Participant not found for user_id: ${userId}`);
+        return;
+      }
+
+      // Find the assignment where:
+      // - order_item_id = selectedItemId
+      // - creditor_id = currentParticipantId
+      // - debtor_id = participant.id
+      const assignment = sessionData.assignments.find(
+        (a) =>
+          a.order_item_id === selectedItemId &&
+          a.creditor_id === currentParticipantId &&
+          a.debtor_id === participant.id
+      );
+
+      if (assignment) {
+        try {
+          const message = {
+            type: 'remove_assignment',
+            assignment_id: assignment.id,
+          };
+          websocketService.send(message);
+        } catch (error: any) {
+          console.error('Error sending remove_assignment message:', error);
+          setError(error.message || 'Failed to remove assignment');
+        }
+      } else {
+        console.warn(`Assignment not found for user_id: ${userId}`);
+      }
+    });
+
+    // Send assignment for each newly selected participant
     // The backend will automatically recalculate the amount per person
     // We send the full item price, and the backend will divide it correctly
-    selectedParticipants.forEach((userId) => {
+    newlySelected.forEach((userId) => {
       // Find participant by user_id
       const participant = sessionData.participants.find((p) => p.user_id === userId);
       if (!participant) {
@@ -513,7 +562,6 @@ export default function ScanScreen() {
           debtor_id: participant.id,
           assigned_amount: item.unit_price, // Backend will recalculate this
         };
-        console.log('Sending assign_item message for participant:', message);
         websocketService.send(message);
       } catch (error: any) {
         console.error('Error sending assign_item message:', error);
@@ -521,10 +569,13 @@ export default function ScanScreen() {
       }
     });
 
+    // Close modal regardless of whether there are new assignments
     slideAnim.setValue(300);
     setParticipantsModalVisible(false);
     setSelectedItemId(null);
     setSelectedParticipants(new Set());
+    setSelectableParticipants([]);
+    setPayingForParticipants([]);
   };
 
   // Handle cancel button in participants modal
@@ -534,6 +585,7 @@ export default function ScanScreen() {
     setSelectedItemId(null);
     setSelectedParticipants(new Set());
     setSelectableParticipants([]);
+    setPayingForParticipants([]);
   };
 
   // Get participant display name by user_id
@@ -546,7 +598,6 @@ export default function ScanScreen() {
 
   // Handle item toggle
   const handleItemToggle = (orderItemId: string, itemPrice: number) => {
-    console.log('handleItemToggle called', { orderItemId, itemPrice, currentParticipantId, wsConnected });
     
     if (!currentParticipantId || !sessionData) {
       const errorMsg = `Unable to assign items. Participant ID: ${currentParticipantId}, Session Data: ${!!sessionData}`;
@@ -570,7 +621,6 @@ export default function ScanScreen() {
     }
 
     const existingAssignments = getUserAssignments.get(orderItemId);
-    console.log('Existing assignments:', existingAssignments);
 
     try {
       if (existingAssignments && existingAssignments.ids.length > 0) {
@@ -581,7 +631,6 @@ export default function ScanScreen() {
           type: 'remove_assignment',
           assignment_id: assignmentIdToRemove,
         };
-        console.log('Sending remove_assignment message:', message);
         websocketService.send(message);
       } else {
         // Create new assignment
@@ -592,7 +641,6 @@ export default function ScanScreen() {
           debtor_id: null,
           assigned_amount: itemPrice, // Assign full item price
         };
-        console.log('Sending assign_item message:', message);
         websocketService.send(message);
       }
     } catch (error: any) {
@@ -698,13 +746,10 @@ export default function ScanScreen() {
                       const allAssignments = getAllAssignmentsByItem.get(item.id);
                       const isAssignedByAnyone = !!allAssignments && allAssignments.totalAmount > 0;
                       
-                      console.log(`[Render] Item ${item.item_name}: isAssignedByMe=${isAssignedByMe}, allAssignments=`, allAssignments);
-                      
                       return (
                         <View key={item.id} style={{ marginBottom: 8 }}>
                           <TouchableOpacity
                             onPress={() => {
-                              console.log('Item tapped:', item.item_name, item.id);
                               handleItemToggle(item.id, item.unit_price);
                             }}
                             activeOpacity={0.7}
@@ -1065,7 +1110,7 @@ export default function ScanScreen() {
                         Loading users...
                       </Text>
                     </VStack>
-                  ) : selectableParticipants.length === 0 ? (
+                  ) : payingForParticipants.length === 0 && selectableParticipants.length === 0 ? (
                     <Box className="py-8">
                       <Text className="text-typography-600 text-center">
                         There is no users available to select
@@ -1078,7 +1123,8 @@ export default function ScanScreen() {
                         nestedScrollEnabled={true}
                       >
                         <VStack space="md">
-                          {selectableParticipants.map((userId) => {
+                          {/* First show checked participants (paying_for_participants) */}
+                          {payingForParticipants.map((userId) => {
                             const isSelected = selectedParticipants.has(userId);
                             return (
                               <TouchableOpacity
@@ -1124,6 +1170,55 @@ export default function ScanScreen() {
                               </TouchableOpacity>
                             );
                           })}
+                          {/* Then show unchecked participants (excluding those already in paying_for) */}
+                          {selectableParticipants
+                            .filter((userId) => !payingForParticipants.includes(userId))
+                            .map((userId) => {
+                              const isSelected = selectedParticipants.has(userId);
+                              return (
+                                <TouchableOpacity
+                                  key={userId}
+                                  onPress={() => handleParticipantToggle(userId)}
+                                  className={`p-4 rounded-lg border-2 ${
+                                    isSelected
+                                      ? 'bg-primary-50 border-primary-600'
+                                      : 'bg-background-0 border-typography-400'
+                                  }`}
+                                >
+                                  <HStack
+                                    space="md"
+                                    style={{ alignItems: 'center' }}
+                                  >
+                                    <View
+                                      className={`w-6 h-6 rounded border-2 ${
+                                        isSelected
+                                          ? 'bg-primary-500 border-primary-600'
+                                          : 'bg-transparent border-typography-400'
+                                      }`}
+                                      style={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                      }}
+                                    >
+                                      {isSelected && (
+                                        <Text className="text-white text-xs font-bold">
+                                          ✓
+                                        </Text>
+                                      )}
+                                    </View>
+                                    <Text
+                                      className={`${
+                                        isSelected
+                                          ? 'text-primary-900 font-semibold'
+                                          : 'text-typography-900'
+                                      }`}
+                                    >
+                                      {getParticipantDisplayName(userId)}
+                                    </Text>
+                                  </HStack>
+                                </TouchableOpacity>
+                              );
+                            })}
                         </VStack>
                       </ScrollView>
                     </View>
@@ -1143,7 +1238,7 @@ export default function ScanScreen() {
                       action="primary"
                       variant="solid"
                       size="md"
-                      isDisabled={selectedParticipants.size === 0 || loadingParticipants}
+                      isDisabled={loadingParticipants}
                     >
                       <ButtonText>Accept</ButtonText>
                     </Button>
