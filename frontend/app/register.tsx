@@ -20,6 +20,7 @@ import {
   Spinner,
 } from '@/components/ui';
 import { apiService, setAuthToken, setCurrentUser } from '@/services/api';
+import { registerForPushNotificationsAsync } from '@/services/notifications';
 
 type StatusType = 'idle' | 'loading' | 'success' | 'error';
 
@@ -90,6 +91,14 @@ export default function RegisterScreen() {
       setCurrentUser(response.user);
       setStatus('success');
       setStatusMessage('Registration successful! Redirecting...');
+
+      // Register push notification token after registration
+      try {
+        await registerForPushNotificationsAsync();
+      } catch (error) {
+        console.error('Failed to register push notifications:', error);
+        // Don't block registration if push notification registration fails
+      }
 
       // Redirect to home after a short delay
       setTimeout(() => {

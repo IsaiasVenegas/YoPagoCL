@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
 
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
+import { initializePushNotifications } from '@/services/notifications';
+import { getAuthToken } from '@/services/api';
 import '@/global.css';
 
 // UUID regex pattern
@@ -14,6 +16,12 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
+    // Initialize push notifications
+    const token = getAuthToken();
+    if (token) {
+      initializePushNotifications();
+    }
+
     // Handle initial URL (when app is opened via deeplink)
     const handleInitialURL = async () => {
       const initialUrl = await Linking.getInitialURL();

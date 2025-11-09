@@ -13,6 +13,7 @@ import {
   HStack,
 } from '@/components/ui';
 import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
+import SendReminderModal from '@/components/SendReminderModal';
 
 export default function InvoicesScreen() {
   const router = useRouter();
@@ -21,6 +22,8 @@ export default function InvoicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
 
   useEffect(() => {
     const token = getAuthToken();
@@ -116,6 +119,28 @@ export default function InvoicesScreen() {
         },
       ]
     );
+  };
+
+  const handleSendReminder = async (invoiceId: string) => {
+    setSelectedInvoiceId(invoiceId);
+    setShowReminderModal(true);
+  };
+
+  const handleSendReminderMessage = async (message?: string) => {
+    try {
+      await apiService.sendPushNotification(selectedInvoiceId, message);
+      Alert.alert('Success', 'Reminder sent successfully!');
+      await loadInvoices(); // Refresh the list
+    } catch (error: any) {
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Failed to send reminder';
+      Alert.alert(
+        'Unable to Send Reminder',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+      throw error;
+    }
   };
 
   if (!isAuthenticated) {
@@ -259,17 +284,30 @@ export default function InvoicesScreen() {
                           {invoice.status === 'pending' && (
                             <VStack space="xs">
                               {isOwed && (
-                                <Button
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    handleMarkPaid(invoice.id);
-                                  }}
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-success-500"
-                                >
-                                  <ButtonText className="text-success-500">Mark as paid</ButtonText>
-                                </Button>
+                                <>
+                                  <Button
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleSendReminder(invoice.id);
+                                    }}
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-primary-500"
+                                  >
+                                    <ButtonText className="text-primary-500">Send reminder</ButtonText>
+                                  </Button>
+                                  <Button
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkPaid(invoice.id);
+                                    }}
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-success-500"
+                                  >
+                                    <ButtonText className="text-success-500">Mark as paid</ButtonText>
+                                  </Button>
+                                </>
                               )}
                               {iOwe && (
                                 <Button
@@ -296,6 +334,16 @@ export default function InvoicesScreen() {
           </VStack>
         </Box>
       </ScrollView>
+
+      <SendReminderModal
+        visible={showReminderModal}
+        onClose={() => {
+          setShowReminderModal(false);
+          setSelectedInvoiceId('');
+        }}
+        invoiceId={selectedInvoiceId}
+        onSend={handleSendReminderMessage}
+      />
     </SafeAreaView>
   );
 }

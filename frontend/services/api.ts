@@ -354,6 +354,25 @@ class ApiService {
       body: JSON.stringify(data),
     });
   }
+
+  async sendPushNotification(invoiceId: string, message?: string): Promise<any> {
+    return this.request('/api/reminders/send-push-notification', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoice_id: invoiceId,
+        message: message || undefined,
+      }),
+    });
+  }
+
+  async registerPushNotificationToken(token: string): Promise<User> {
+    return this.request('/api/auth/users/me', {
+      method: 'PUT',
+      body: JSON.stringify({
+        push_notification_token: token,
+      }),
+    });
+  }
 }
 
 export const apiService = new ApiService(API_BASE_URL);

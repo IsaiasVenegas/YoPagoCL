@@ -13,6 +13,7 @@ import {
   HStack,
 } from '@/components/ui';
 import { getAuthToken, getCurrentUser, apiService } from '@/services/api';
+import SendReminderModal from '@/components/SendReminderModal';
 
 export default function InvoiceDetailScreen() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function InvoiceDetailScreen() {
   const [invoice, setInvoice] = useState<any>(null);
   const [payingInvoice, setPayingInvoice] = useState(false);
   const [markedAsPaidInCash, setMarkedAsPaidInCash] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -135,6 +137,27 @@ export default function InvoiceDetailScreen() {
         },
       ]
     );
+  };
+
+  const handleSendReminder = () => {
+    setShowReminderModal(true);
+  };
+
+  const handleSendReminderMessage = async (message?: string) => {
+    try {
+      await apiService.sendPushNotification(invoiceId, message);
+      Alert.alert('Success', 'Reminder sent successfully!');
+      await loadInvoice(); // Refresh the invoice
+    } catch (error: any) {
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Failed to send reminder';
+      Alert.alert(
+        'Unable to Send Reminder',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+      throw error;
+    }
   };
 
 
@@ -261,14 +284,24 @@ export default function InvoiceDetailScreen() {
                       </Button>
                     )}
                     {isOwed && (
-                      <Button
-                        onPress={handleMarkPaid}
-                        action="primary"
-                        variant="solid"
-                        size="lg"
-                      >
-                        <ButtonText>Mark as paid</ButtonText>
-                      </Button>
+                      <>
+                        <Button
+                          onPress={handleSendReminder}
+                          action="primary"
+                          variant="solid"
+                          size="lg"
+                        >
+                          <ButtonText>Send reminder</ButtonText>
+                        </Button>
+                        <Button
+                          onPress={handleMarkPaid}
+                          action="primary"
+                          variant="solid"
+                          size="lg"
+                        >
+                          <ButtonText>Mark as paid</ButtonText>
+                        </Button>
+                      </>
                     )}
                   </VStack>
                 );
@@ -289,6 +322,13 @@ export default function InvoiceDetailScreen() {
           )}
         </Box>
       </ScrollView>
+
+      <SendReminderModal
+        visible={showReminderModal}
+        onClose={() => setShowReminderModal(false)}
+        invoiceId={invoiceId}
+        onSend={handleSendReminderMessage}
+      />
     </SafeAreaView>
   );
 }
